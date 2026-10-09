@@ -1,0 +1,301 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+
+    // Product Validator
+    function isValidProduct(data) {
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.sellingPrice is number && data.sellingPrice >= 0 &&
+             data.stock is number &&
+             (!('purchasePrice' in data) || (data.purchasePrice is number && data.purchasePrice >= 0)) &&
+             (!('brand' in data) || (data.brand is string && data.brand.size() <= 100)) &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 100)) &&
+             (!('barcode' in data) || (data.barcode is string && data.barcode.size() <= 100)) &&
+             (!('minStockAlert' in data) || (data.minStockAlert is number && data.minStockAlert >= 0)) &&
+             (!('warrantyMonths' in data) || (data.warrantyMonths is number && data.warrantyMonths >= 0));
+    }
+
+    match /products/{productId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(productId) && isValidProduct(incoming()) &&
+                       incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(productId) && isValidProduct(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(productId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Sale Validator
+    function isValidSale(data) {
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
+             data.invoiceNumber is string && data.invoiceNumber.size() > 0 && data.invoiceNumber.size() <= 50 &&
+             data.total is number && data.total >= 0 &&
+             data.paidAmount is number && data.paidAmount >= 0 &&
+             (!('subtotal' in data) || (data.subtotal is number && data.subtotal >= 0)) &&
+             (!('discount' in data) || (data.discount is number && data.discount >= 0)) &&
+             (!('tax' in data) || (data.tax is number && data.tax >= 0)) &&
+             (!('dueAmount' in data) || (data.dueAmount is number && data.dueAmount >= 0)) &&
+             (!('customerName' in data) || (data.customerName is string && data.customerName.size() <= 120)) &&
+             (!('customerPhone' in data) || (data.customerPhone is string && data.customerPhone.size() <= 30)) &&
+             (!('paymentMethod' in data) || (data.paymentMethod is string && data.paymentMethod.size() <= 50)) &&
+             (!('paymentStatus' in data) || (data.paymentStatus is string && data.paymentStatus.size() <= 30)) &&
+             (!('saleType' in data) || (data.saleType is string && data.saleType.size() <= 30));
+    }
+
+    match /sales/{saleId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(saleId) && isValidSale(incoming()) &&
+                       incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(saleId) && isValidSale(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(saleId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Installment Validator
+    function isValidInstallment(data) {
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
+             data.saleId is string && data.saleId.size() <= 100 &&
+             data.customerName is string && data.customerName.size() <= 120 &&
+             data.totalAmount is number && data.totalAmount >= 0 &&
+             (!('downPayment' in data) || (data.downPayment is number && data.downPayment >= 0)) &&
+             (!('remainingBalance' in data) || (data.remainingBalance is number && data.remainingBalance >= 0)) &&
+             (!('monthlyAmount' in data) || (data.monthlyAmount is number && data.monthlyAmount >= 0)) &&
+             (!('customerPhone' in data) || (data.customerPhone is string && data.customerPhone.size() <= 30)) &&
+             (!('status' in data) || (data.status is string && data.status.size() <= 30));
+    }
+
+    match /installments/{installmentId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(installmentId) && isValidInstallment(incoming()) &&
+                       incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(installmentId) && isValidInstallment(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(installmentId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Return & Warranty Claim Validator
+    function isValidReturnClaim(data) {
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
+             data.productName is string && data.productName.size() <= 200 &&
+             data.claimType is string && data.claimType.size() <= 50 &&
+             data.status is string && data.status.size() <= 30 &&
+             (!('invoiceNumber' in data) || (data.invoiceNumber is string && data.invoiceNumber.size() <= 50)) &&
+             (!('serialNumber' in data) || (data.serialNumber is string && data.serialNumber.size() <= 100)) &&
+             (!('customerName' in data) || (data.customerName is string && data.customerName.size() <= 120)) &&
+             (!('reason' in data) || (data.reason is string && data.reason.size() <= 500)) &&
+             (!('refundAmount' in data) || (data.refundAmount is number && data.refundAmount >= 0));
+    }
+
+    match /returns/{returnId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(returnId) && isValidReturnClaim(incoming()) &&
+                       incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(returnId) && isValidReturnClaim(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(returnId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Store Settings Validator
+    function isValidStoreSettings(data) {
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
+             data.storeName is string && data.storeName.size() > 0 && data.storeName.size() <= 150 &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 250)) &&
+             (!('vatPercent' in data) || (data.vatPercent is number && data.vatPercent >= 0 && data.vatPercent <= 100)) &&
+             (!('currencySymbol' in data) || (data.currencySymbol is string && data.currencySymbol.size() <= 10)) &&
+             (!('invoiceFooter' in data) || (data.invoiceFooter is string && data.invoiceFooter.size() <= 500));
+    }
+
+    match /store_settings/{settingId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(settingId) && isValidStoreSettings(incoming()) &&
+                       incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(settingId) && isValidStoreSettings(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(settingId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Supplier Validator
+    function isValidSupplier(data) {
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+             (!('companyName' in data) || (data.companyName is string && data.companyName.size() <= 120)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+             (!('balanceDue' in data) || (data.balanceDue is number)) &&
+             (!('totalPurchased' in data) || (data.totalPurchased is number && data.totalPurchased >= 0)) &&
+             (!('totalPaid' in data) || (data.totalPaid is number && data.totalPaid >= 0));
+    }
+
+    match /suppliers/{supplierId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(supplierId) && isValidSupplier(incoming()) &&
+                       incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(supplierId) && isValidSupplier(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(supplierId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Purchase Validator
+    function isValidPurchase(data) {
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
+             data.challanNumber is string && data.challanNumber.size() > 0 && data.challanNumber.size() <= 50 &&
+             data.total is number && data.total >= 0 &&
+             data.paidAmount is number && data.paidAmount >= 0 &&
+             (!('dueAmount' in data) || (data.dueAmount is number && data.dueAmount >= 0));
+    }
+
+    match /purchases/{purchaseId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(purchaseId) && isValidPurchase(incoming()) &&
+                       incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(purchaseId) && isValidPurchase(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(purchaseId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Repair Ticket Validator
+    function isValidRepair(data) {
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
+             data.ticketNumber is string && data.ticketNumber.size() > 0 && data.ticketNumber.size() <= 50 &&
+             data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 120 &&
+             data.customerPhone is string && data.customerPhone.size() <= 30 &&
+             data.deviceModel is string && data.deviceModel.size() <= 120 &&
+             (!('estimatedCost' in data) || (data.estimatedCost is number && data.estimatedCost >= 0)) &&
+             (!('advancePaid' in data) || (data.advancePaid is number && data.advancePaid >= 0)) &&
+             (!('status' in data) || (data.status is string && data.status.size() <= 50));
+    }
+
+    match /repairs/{repairId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(repairId) && isValidRepair(incoming()) &&
+                       incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(repairId) && isValidRepair(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(repairId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Expense Validator
+    function isValidExpense(data) {
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 150 &&
+             data.amount is number && data.amount >= 0 &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 50));
+    }
+
+    match /expenses/{expenseId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(expenseId) && isValidExpense(incoming()) &&
+                       incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(expenseId) && isValidExpense(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(expenseId) && existing().ownerId == request.auth.uid;
+    }
+
+    // Devices & MDM Locker
+    match /devices/{deviceId} {
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
+    }
+
+    // Used Phones & Deeds
+    match /used_buys/{usedBuyId} {
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
+    }
+
+    // Staff & Payroll
+    match /staff/{staffId} {
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
+    }
+
+    // Customer Credit & KYC Profiles
+    match /customer_profiles/{profileId} {
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
+    }
+
+    // Accounts & Accounting
+    match /accounts/{accountId} {
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
+    }
+
+    // Journal Transactions
+    match /journal/{journalId} {
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
+    }
+
+    // SMS Logs
+    match /sms_logs/{smsId} {
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
+    }
+
+    // Chat Messages
+    match /chat_messages/{chatId} {
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
+    }
+  }
+}

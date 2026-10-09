@@ -1,0 +1,415 @@
+import React, { useState } from 'react';
+import { useApp } from '../../context/AppContext';
+import { AccountEntry, JournalTransaction } from '../../types';
+import { 
+  DollarSign, 
+  Plus, 
+  FileText, 
+  ArrowUpRight, 
+  ArrowDownRight, 
+  Building2, 
+  CheckCircle2, 
+  CreditCard, 
+  Calendar, 
+  TrendingUp, 
+  TrendingDown, 
+  Printer, 
+  Download
+} from 'lucide-react';
+
+export const AccountingManager: React.FC = () => {
+  const { 
+    accounts, 
+    journalEntries, 
+    addJournalEntry, 
+    formatCurrency, 
+    branch, 
+    lang 
+  } = useApp();
+
+  const [activeTab, setActiveTab] = useState<'overview' | 'journal' | 'accounts' | 'pnl' | 'trial'>('overview');
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  // New Journal Form
+  const [debitAcc, setDebitAcc] = useState('Cash in Hand (BP-Ishwargonj)');
+  const [creditAcc, setCreditAcc] = useState('Sales Revenue');
+  const [amount, setAmount] = useState('');
+  const [description, setDescription] = useState('');
+  const [referenceNo, setReferenceNo] = useState(`REF-${Date.now().toString().slice(-4)}`);
+
+  const handleAddJournal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!amount || !description) return;
+
+    addJournalEntry({
+      date: new Date().toISOString().split('T')[0],
+      referenceNo,
+      description,
+      debitAccount: debitAcc,
+      creditAccount: creditAcc,
+      amount: parseFloat(amount) || 0,
+      branch
+    });
+
+    setShowAddModal(false);
+    setAmount('');
+    setDescription('');
+  };
+
+  const totalCashBank = accounts
+    .filter(a => a.type === 'Asset' && (a.accountName.includes('Cash') || a.accountName.includes('Bank') || a.accountName.includes('bKash') || a.accountName.includes('Nagad')))
+    .reduce((sum, a) => sum + a.balance, 0);
+
+  const totalReceivable = accounts.find(a => a.accountName.includes('Receivable'))?.balance || 485000;
+  const totalPayable = accounts.find(a => a.accountName.includes('Payable'))?.balance || 240000;
+
+  return (
+    <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-100 text-slate-800 space-y-4">
+      
+      {/* Top Banner Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="font-extrabold text-lg sm:text-xl text-slate-900 flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-indigo-600" />
+              <span>{lang === 'bn' ? 'হিসাবরক্ষণ, ক্যাশ-ব্যাংক ও ডাবল-এন্ট্রি লেজার' : 'Accounting, Cash & Double-Entry Ledger'}</span>
+            </h1>
+            <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+              {branch}
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-1">
+            {lang === 'bn' 
+              ? 'ক্যাশ ইন হ্যান্ড, মোবাইল ব্যাংকিং, ব্যাংক বুক, জার্নাল এন্ট্রি এবং লাভ-ক্ষতি স্টেটমেন্ট।' 
+              : 'Real-time Chart of Accounts, Cash & Bank reconciliations, General Ledger & Financial Statements.'}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow-md shadow-indigo-900/20 transition active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            <span>{lang === 'bn' ? 'নতুন জার্নাল ভাউচার' : 'Post Journal Entry'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Navigation Sub-Tabs */}
+      <div className="bg-white p-1 rounded-xl border border-slate-200 flex items-center gap-1 overflow-x-auto text-xs font-bold">
+        {[
+          { id: 'overview', label: 'Cash & Bank Accounts' },
+          { id: 'journal', label: 'Journal Transactions' },
+          { id: 'pnl', label: 'Income Statement (P&L)' },
+          { id: 'trial', label: 'Trial Balance & Ledger' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`py-2 px-4 rounded-lg transition whitespace-nowrap ${
+              activeTab === tab.id 
+                ? 'bg-indigo-600 text-white shadow-xs' 
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* TAB 1: OVERVIEW & CASH-BANK ACCOUNTS */}
+      {activeTab === 'overview' && (
+        <div className="space-y-4">
+          
+          {/* Summary Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-5 rounded-2xl shadow-md border border-slate-800">
+              <div className="text-[10px] uppercase font-bold text-indigo-300">Total Liquid Cash & Bank</div>
+              <div className="text-2xl font-black font-mono text-white mt-1">
+                {formatCurrency(totalCashBank)}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Across Hand Cash, Banks & MFS Wallets</span>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+              <div className="text-[10px] uppercase font-bold text-slate-500">Accounts Receivable (দেনাদার)</div>
+              <div className="text-2xl font-black font-mono text-indigo-600 mt-1">
+                {formatCurrency(totalReceivable)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                কিস্তির বকেয়া ও কাস্টমার পাওনা
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
+              <div className="text-[10px] uppercase font-bold text-slate-500">Accounts Payable (পাওনাদার)</div>
+              <div className="text-2xl font-black font-mono text-rose-600 mt-1">
+                {formatCurrency(totalPayable)}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-1">
+                সাপ্লায়ার বাকি ও প্রদেয় বিল
+              </div>
+            </div>
+          </div>
+
+          {/* Accounts Grid */}
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
+            <h3 className="font-extrabold text-sm text-slate-900 mb-3">Chart of Accounts & Wallet Balances</h3>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {accounts.map(acc => (
+                <div key={acc.id} className="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-300 transition bg-slate-50/50">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-slate-800">{acc.accountName}</span>
+                    <span className="px-2 py-0.2 rounded text-[9px] font-mono font-bold bg-white border border-slate-200">
+                      {acc.type}
+                    </span>
+                  </div>
+                  <div className="text-lg font-black font-mono text-slate-900 mt-2">
+                    {formatCurrency(acc.balance)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* TAB 2: JOURNAL TRANSACTIONS */}
+      {activeTab === 'journal' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+          <div className="p-4 border-b border-slate-200 flex items-center justify-between">
+            <h3 className="font-bold text-sm text-slate-900">General Journal Entries (ডাবল-এন্ট্রি ভাউচার)</h3>
+            <span className="text-xs text-slate-500 font-mono">{journalEntries.length} Posted</span>
+          </div>
+
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
+                <th className="py-2.5 px-4">Date & Ref</th>
+                <th className="py-2.5 px-4">Description</th>
+                <th className="py-2.5 px-4">Debit Account</th>
+                <th className="py-2.5 px-4">Credit Account</th>
+                <th className="py-2.5 px-4 text-right">Amount (৳)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {journalEntries.map(j => (
+                <tr key={j.id} className="hover:bg-slate-50 transition">
+                  <td className="py-3 px-4 font-mono font-bold text-slate-800">
+                    <div>{j.date}</div>
+                    <div className="text-[10px] text-slate-400 font-normal">{j.referenceNo}</div>
+                  </td>
+                  <td className="py-3 px-4 text-slate-800 font-medium">
+                    {j.description}
+                  </td>
+                  <td className="py-3 px-4 text-indigo-700 font-semibold font-mono">
+                    {j.debitAccount}
+                  </td>
+                  <td className="py-3 px-4 text-slate-600 font-mono">
+                    {j.creditAccount}
+                  </td>
+                  <td className="py-3 px-4 text-right font-black font-mono text-slate-900">
+                    {formatCurrency(j.amount)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* TAB 3: PROFIT & LOSS STATEMENT */}
+      {activeTab === 'pnl' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-6 space-y-4 max-w-3xl mx-auto">
+          <div className="text-center pb-4 border-b border-slate-200">
+            <h2 className="text-base font-black uppercase text-slate-900">Income Statement (লাভ ও ক্ষতি বিবরণী)</h2>
+            <div className="text-xs text-slate-500 font-mono mt-0.5">{branch} • Current Fiscal Period</div>
+          </div>
+
+          <div className="space-y-3 text-xs">
+            <div className="flex items-center justify-between font-bold text-slate-900 text-sm">
+              <span>১. বিক্রয় আয় (Total Revenue)</span>
+              <span className="font-mono">{formatCurrency(485000)}</span>
+            </div>
+
+            <div className="flex items-center justify-between text-slate-600 pl-4">
+              <span>নগদ স্মার্টফোন বিক্রয়</span>
+              <span className="font-mono">{formatCurrency(340000)}</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600 pl-4">
+              <span>কিস্তি ও ফাইন্যান্সিং প্রফিট চার্জ</span>
+              <span className="font-mono">{formatCurrency(145000)}</span>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200 flex items-center justify-between font-bold text-slate-900 text-sm">
+              <span>২. বিক্রিত পণ্যের ক্রয়মূল্য (COGS)</span>
+              <span className="font-mono text-rose-600">({formatCurrency(368000)})</span>
+            </div>
+
+            <div className="pt-2 border-t-2 border-slate-300 flex items-center justify-between font-black text-emerald-700 text-sm bg-emerald-50/50 p-2 rounded-lg">
+              <span>মোট লাভ (Gross Profit)</span>
+              <span className="font-mono">{formatCurrency(117000)}</span>
+            </div>
+
+            <div className="pt-2 flex items-center justify-between font-bold text-slate-900">
+              <span>৩. পরিচালনা ব্যয় (Operating Expenses)</span>
+              <span className="font-mono text-rose-600">({formatCurrency(34500)})</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600 pl-4">
+              <span>দোকান ভাড়া ও বিদ্যুৎ বিল</span>
+              <span className="font-mono">{formatCurrency(18500)}</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-600 pl-4">
+              <span>স্টাফ বেতন ও চা-নাস্তা</span>
+              <span className="font-mono">{formatCurrency(16000)}</span>
+            </div>
+
+            <div className="pt-4 border-t-2 border-indigo-600 flex items-center justify-between font-black text-indigo-950 text-base bg-indigo-50 p-3 rounded-xl">
+              <span>নিট প্রফিট (Net Operating Profit)</span>
+              <span className="font-mono text-emerald-700">{formatCurrency(82500)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: TRIAL BALANCE */}
+      {activeTab === 'trial' && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+            <h3 className="font-bold text-sm text-slate-900">Trial Balance (রেওয়ামিল)</h3>
+            <button onClick={() => window.print()} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center gap-1">
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print Sheet</span>
+            </button>
+          </div>
+
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                <th className="py-2.5 px-3">Account Head</th>
+                <th className="py-2.5 px-3">Account Type</th>
+                <th className="py-2.5 px-3 text-right">Debit (৳)</th>
+                <th className="py-2.5 px-3 text-right">Credit (৳)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 font-mono">
+              <tr>
+                <td className="py-2.5 px-3 font-bold text-slate-900">Cash in Hand (ঈশ্বরগঞ্জ)</td>
+                <td className="py-2.5 px-3 text-slate-500 font-sans">Asset</td>
+                <td className="py-2.5 px-3 text-right font-bold">145,000</td>
+                <td className="py-2.5 px-3 text-right text-slate-400">-</td>
+              </tr>
+              <tr>
+                <td className="py-2.5 px-3 font-bold text-slate-900">Accounts Receivable (বকেয়া)</td>
+                <td className="py-2.5 px-3 text-slate-500 font-sans">Asset</td>
+                <td className="py-2.5 px-3 text-right font-bold">485,000</td>
+                <td className="py-2.5 px-3 text-right text-slate-400">-</td>
+              </tr>
+              <tr>
+                <td className="py-2.5 px-3 font-bold text-slate-900">Accounts Payable (সাপ্লায়ার)</td>
+                <td className="py-2.5 px-3 text-slate-500 font-sans">Liability</td>
+                <td className="py-2.5 px-3 text-right text-slate-400">-</td>
+                <td className="py-2.5 px-3 text-right font-bold">240,000</td>
+              </tr>
+              <tr>
+                <td className="py-2.5 px-3 font-bold text-slate-900">Owner Capital (মূলধন)</td>
+                <td className="py-2.5 px-3 text-slate-500 font-sans">Equity</td>
+                <td className="py-2.5 px-3 text-right text-slate-400">-</td>
+                <td className="py-2.5 px-3 text-right font-bold">390,000</td>
+              </tr>
+              <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300">
+                <td className="py-3 px-3">Total Balance Check</td>
+                <td></td>
+                <td className="py-3 px-3 text-right text-indigo-700">630,000</td>
+                <td className="py-3 px-3 text-right text-indigo-700">630,000</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* POST JOURNAL VOUCHER MODAL */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in">
+          <form onSubmit={handleAddJournal} className="bg-white rounded-2xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-center justify-between border-b pb-2">
+              <span className="font-extrabold text-sm text-slate-900">Post New Journal Voucher</span>
+              <button type="button" onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">ভাউচার বিবরণ / নারেশন *</label>
+              <input
+                type="text"
+                required
+                placeholder="যেমন: শোরুম ভাড়া প্রদান..."
+                value={description}
+                onChange={e => setDescription(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Debit Account *</label>
+                <select
+                  value={debitAcc}
+                  onChange={e => setDebitAcc(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold"
+                >
+                  {accounts.map(a => <option key={a.id} value={a.accountName}>{a.accountName}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Credit Account *</label>
+                <select
+                  value={creditAcc}
+                  onChange={e => setCreditAcc(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold"
+                >
+                  {accounts.map(a => <option key={a.id} value={a.accountName}>{a.accountName}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">টাকার পরিমাণ (৳) *</label>
+              <input
+                type="number"
+                required
+                placeholder="5000"
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-sm"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
+              >
+                বাতিল
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs"
+              >
+                পোস্ট করুন
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+    </div>
+  );
+};

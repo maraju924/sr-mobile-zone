@@ -1,0 +1,373 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Electronics inventory item with serials and warranty",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique product ID"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Store owner or user ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Product title",
+          "maxLength": 200
+        },
+        "brand": {
+          "type": "string",
+          "description": "Brand manufacturer name",
+          "maxLength": 100
+        },
+        "category": {
+          "type": "string",
+          "description": "Product category",
+          "maxLength": 100
+        },
+        "barcode": {
+          "type": "string",
+          "description": "Barcode or SKU identifier",
+          "maxLength": 100
+        },
+        "purchasePrice": {
+          "type": "number",
+          "description": "Purchase cost price"
+        },
+        "sellingPrice": {
+          "type": "number",
+          "description": "Retail selling price"
+        },
+        "stock": {
+          "type": "number",
+          "description": "Current quantity in stock"
+        },
+        "minStockAlert": {
+          "type": "number",
+          "description": "Low stock alert threshold"
+        },
+        "warrantyMonths": {
+          "type": "number",
+          "description": "Warranty duration in months"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp updated"
+        }
+      },
+      "required": ["ownerId", "name", "sellingPrice", "stock", "createdAt"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Sales invoice record with customer, payment, and items",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique sale ID"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Store owner user ID"
+        },
+        "invoiceNumber": {
+          "type": "string",
+          "description": "Unique invoice sequential code",
+          "maxLength": 50
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Customer full name",
+          "maxLength": 120
+        },
+        "customerPhone": {
+          "type": "string",
+          "description": "Customer phone number",
+          "maxLength": 30
+        },
+        "subtotal": {
+          "type": "number",
+          "description": "Subtotal before discount/tax"
+        },
+        "discount": {
+          "type": "number",
+          "description": "Discount applied"
+        },
+        "tax": {
+          "type": "number",
+          "description": "VAT or tax amount"
+        },
+        "total": {
+          "type": "number",
+          "description": "Final total payable"
+        },
+        "paidAmount": {
+          "type": "number",
+          "description": "Amount paid by customer"
+        },
+        "dueAmount": {
+          "type": "number",
+          "description": "Remaining due amount"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "Payment channel",
+          "maxLength": 50
+        },
+        "paymentStatus": {
+          "type": "string",
+          "description": "Payment status: paid, partial, due",
+          "maxLength": 30
+        },
+        "saleType": {
+          "type": "string",
+          "description": "Sale type: regular, installment",
+          "maxLength": 30
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Sale creation timestamp"
+        }
+      },
+      "required": ["ownerId", "invoiceNumber", "total", "paidAmount", "createdAt"]
+    },
+    "Installment": {
+      "title": "Installment",
+      "description": "EMI and installment tracking agreement",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique installment agreement ID"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Store owner ID"
+        },
+        "saleId": {
+          "type": "string",
+          "description": "Associated sale/invoice ID",
+          "maxLength": 100
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Customer name",
+          "maxLength": 120
+        },
+        "customerPhone": {
+          "type": "string",
+          "description": "Customer phone",
+          "maxLength": 30
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "Total installment cost"
+        },
+        "downPayment": {
+          "type": "number",
+          "description": "Initial down payment"
+        },
+        "remainingBalance": {
+          "type": "number",
+          "description": "Unpaid remaining balance"
+        },
+        "monthlyAmount": {
+          "type": "number",
+          "description": "Installment per period"
+        },
+        "status": {
+          "type": "string",
+          "description": "Active, completed, overdue",
+          "maxLength": 30
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp created"
+        }
+      },
+      "required": ["ownerId", "saleId", "customerName", "totalAmount", "createdAt"]
+    },
+    "ReturnClaim": {
+      "title": "ReturnClaim",
+      "description": "Product return or warranty claim ticket",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique claim ID"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Store owner ID"
+        },
+        "invoiceNumber": {
+          "type": "string",
+          "description": "Reference invoice number",
+          "maxLength": 50
+        },
+        "productName": {
+          "type": "string",
+          "description": "Returned product name",
+          "maxLength": 200
+        },
+        "serialNumber": {
+          "type": "string",
+          "description": "IMEI or Serial Number",
+          "maxLength": 100
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Customer name",
+          "maxLength": 120
+        },
+        "claimType": {
+          "type": "string",
+          "description": "Return, Warranty, Repair",
+          "maxLength": 50
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason for return or warranty claim",
+          "maxLength": 500
+        },
+        "refundAmount": {
+          "type": "number",
+          "description": "Amount refunded if returned"
+        },
+        "status": {
+          "type": "string",
+          "description": "Pending, Approved, Repaired, Replaced, Rejected",
+          "maxLength": 30
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp"
+        }
+      },
+      "required": ["ownerId", "productName", "claimType", "status", "createdAt"]
+    },
+    "StoreSettings": {
+      "title": "StoreSettings",
+      "description": "Electronics shop profile and preferences",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "User ID of store owner"
+        },
+        "storeName": {
+          "type": "string",
+          "description": "Name of the electronics store",
+          "maxLength": 150
+        },
+        "phone": {
+          "type": "string",
+          "description": "Store contact phone",
+          "maxLength": 30
+        },
+        "address": {
+          "type": "string",
+          "description": "Shop physical address",
+          "maxLength": 250
+        },
+        "vatPercent": {
+          "type": "number",
+          "description": "Default tax/VAT rate percentage"
+        },
+        "currencySymbol": {
+          "type": "string",
+          "description": "Currency symbol, e.g. ৳ or $",
+          "maxLength": 10
+        },
+        "invoiceFooter": {
+          "type": "string",
+          "description": "Custom invoice footnote or warranty notice",
+          "maxLength": 500
+        }
+      },
+      "required": ["ownerId", "storeName"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Store inventory products list"
+    },
+    "/sales/{saleId}": {
+      "schema": "Sale",
+      "description": "Completed sales transactions and invoices"
+    },
+    "/installments/{installmentId}": {
+      "schema": "Installment",
+      "description": "Installment and EMI payment plans"
+    },
+    "/returns/{returnId}": {
+      "schema": "ReturnClaim",
+      "description": "Product warranty and return tickets"
+    },
+    "/store_settings/{settingId}": {
+      "schema": "StoreSettings",
+      "description": "Custom store metadata and invoice details"
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "Suppliers and vendor directory"
+    },
+    "/purchases/{purchaseId}": {
+      "schema": "Purchase",
+      "description": "Inventory purchase challans"
+    },
+    "/repairs/{repairId}": {
+      "schema": "RepairTicket",
+      "description": "Device repair and servicing tickets"
+    },
+    "/expenses/{expenseId}": {
+      "schema": "Expense",
+      "description": "Store daily business expenses"
+    },
+    "/devices/{deviceId}": {
+      "schema": "Device",
+      "description": "EMI Locker managed devices and fleet"
+    },
+    "/used_buys/{usedBuyId}": {
+      "schema": "UsedBuyRecord",
+      "description": "Used phone buyback and purchase agreements"
+    },
+    "/staff/{staffId}": {
+      "schema": "StaffMember",
+      "description": "Store employees and payroll profiles"
+    },
+    "/customer_profiles/{profileId}": {
+      "schema": "CustomerCreditProfile",
+      "description": "Customer credit score and KYC records"
+    },
+    "/accounts/{accountId}": {
+      "schema": "AccountEntry",
+      "description": "Accounting charts and asset ledgers"
+    },
+    "/journal/{journalId}": {
+      "schema": "JournalTransaction",
+      "description": "Double entry accounting journals"
+    },
+    "/sms_logs/{smsId}": {
+      "schema": "SMSLog",
+      "description": "SMS gateway push logs"
+    },
+    "/chat_messages/{chatId}": {
+      "schema": "ChatMessage",
+      "description": "Internal and customer chat logs"
+    }
+  }
+}

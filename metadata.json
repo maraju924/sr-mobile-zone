@@ -1,0 +1,10 @@
+{
+  "name": "ElectroPOS - ইনভেন্টরি ও বিক্রয় ব্যবস্থাপনা",
+  "description": "ইলেকট্রনিক্স স্টোরের আধুনিক পিওএস, স্টক ম্যানেজমেন্ট, বারকোড স্ক্যানিং, কিস্তি ও বাকি বিক্রয় ট্র্যাকিং, ইনভয়েস এবং লাভ-ক্ষতির পূর্ণাঙ্গ সমাধান।",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
