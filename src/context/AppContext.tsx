@@ -19,6 +19,7 @@ import {
   CustomerCreditProfile,
   FollowUpLog,
   Branch,
+  BranchInfo,
   Device,
   UsedBuyRecord,
   StaffMember,
@@ -26,7 +27,8 @@ import {
   JournalTransaction,
   SMSLog,
   ChatMessage,
-  AuthUser
+  AuthUser,
+  UserRole
 } from '../types';
 import { 
   STORAGE_KEYS, 
@@ -198,6 +200,10 @@ interface AppContextType {
   // Branch & Multi-Location
   branch: Branch;
   setBranch: (branch: Branch) => void;
+  branches: BranchInfo[];
+  addBranch: (newBranch: BranchInfo) => void;
+  updateBranch: (branchId: string, updates: Partial<BranchInfo>) => void;
+  deleteBranch: (branchId: string) => void;
 
   // Enterprise Locker & Devices
   devices: Device[];
@@ -245,6 +251,7 @@ interface AppContextType {
   loginGoogle: () => Promise<void>;
   loginEmail: (email: string, pass: string) => Promise<void>;
   registerEmail: (email: string, pass: string, name?: string) => Promise<void>;
+  loginStaff: (phoneOrUsername: string, pin: string) => Promise<{ success: boolean; message: string }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -684,6 +691,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         paidCount: 0,
         status: balance <= 0 ? 'completed' : 'active',
         schedule,
+        branch: branch || 'BP-ISHWARGONJ',
         createdAt: now.toISOString()
       };
 
@@ -758,6 +766,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       saleType: isInstallment ? 'installment' : 'regular',
       installmentId: newInstallmentId,
       note: saleData.note,
+      branch: branch || 'BP-ISHWARGONJ',
       dueDeadline: saleData.dueDeadline,
       creditTermDays: saleData.creditTermDays,
       createdAt: now.toISOString()
@@ -766,6 +775,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Save sale directly to Firebase Firestore
     if (currentOwnerId) {
       saveDocToFirestore('sales', newSale, currentOwnerId);
+    }
+
+    // Double-entry bookkeeping: Record journal entry for sale payment
+    if (paid > 0) {
+      addJournalEntry({
+        date: now.toISOString().split('T')[0],
+        referenceNo: `SALE-${invoiceNumber}`,
+        description: `পণ্য বিক্রয় ইনভয়েস #${invoiceNumber} (${saleData.customerName || 'ক্রেতা'})`,
+        debitAccount: saleData.paymentMethod === 'bkash' || saleData.paymentMethod === 'nagad'
+          ? 'bKash/Nagad Wallet'
+          : saleData.paymentMethod === 'card'
+          ? 'Bank Account'
+          : 'Cash in Hand',
+        creditAccount: 'Sales Revenue',
+        amount: paid,
+        branch: branch || 'BP-ISHWARGONJ'
+      });
     }
 
     // Update customer credit profile when customer info is available
@@ -899,6 +925,35 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         schedule: updatedSchedule
       };
       if (ownerId) saveDocToFirestore('installments', updatedInst, ownerId);
+
+      // Also update linked Sale record so paidAmount and dueAmount stay 100% synchronized
+      setSales(prevSales => prevSales.map(s => {
+        if (s.installmentId === installmentId || s.invoiceNumber === inst.invoiceNumber) {
+          const newPaid = s.paidAmount + amount;
+          const newDue = Math.max(0, s.total - newPaid);
+          const updatedSale: Sale = {
+            ...s,
+            paidAmount: newPaid,
+            dueAmount: newDue,
+            paymentStatus: newDue <= 0 ? 'paid' : 'partial'
+          };
+          if (ownerId) saveDocToFirestore('sales', updatedSale, ownerId);
+          return updatedSale;
+        }
+        return s;
+      }));
+
+      // Double-entry accounting for installment recovery
+      addJournalEntry({
+        date: now.toISOString().split('T')[0],
+        referenceNo: `INST-${inst.invoiceNumber}-${Date.now().toString().slice(-4)}`,
+        description: `কিস্তি আদায় - ইনভয়েস: ${inst.invoiceNumber} (${inst.customerName})`,
+        debitAccount: 'Cash in Hand',
+        creditAccount: 'Installment Accounts Receivable',
+        amount,
+        branch: inst.branch || branch
+      });
+
       return updatedInst;
     }));
 
@@ -938,6 +993,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         paymentStatus: newDue <= 0 ? 'paid' : 'partial'
       };
       if (ownerId) saveDocToFirestore('sales', updatedSale, ownerId);
+
+      // Double-entry accounting for collected due
+      addJournalEntry({
+        date: new Date().toISOString().split('T')[0],
+        referenceNo: `DUE-${sale.invoiceNumber}-${Date.now().toString().slice(-4)}`,
+        description: `বকেয়া আদায় - ইনভয়েস #${sale.invoiceNumber} (${sale.customerName})`,
+        debitAccount: 'Cash in Hand',
+        creditAccount: 'Accounts Receivable',
+        amount,
+        branch: sale.branch || branch
+      });
+
       return updatedSale;
     }));
 
@@ -1612,10 +1679,93 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const login = loginGoogle;
   const logout = authLogout;
 
+  // Dynamic Branch List & Management
+  const branches: BranchInfo[] = (settings.branches && settings.branches.length > 0)
+    ? settings.branches
+    : [
+        { id: 'BP-ISHWARGONJ', name: 'ঈশ্বরগঞ্জ ব্রাঞ্চ (BP-ISHWARGONJ)', address: 'ঈশ্বরগঞ্জ বাজার, ময়মনসিংহ', phone: '+8801700000001', isDefault: true },
+        { id: 'BP-MYMENSINGH', name: 'ময়মনসিংহ ব্রাঞ্চ (BP-MYMENSINGH)', address: 'গাঙ্গিনার পাড়, ময়মনসিংহ', phone: '+8801700000002' }
+      ];
+
   // Branch switcher
   const setBranch = (newBranch: Branch) => {
     setBranchState(newBranch);
     saveToLocal(STORAGE_KEYS.BRANCH, newBranch);
+  };
+
+  const addBranch = (newBranch: BranchInfo) => {
+    const ownerId = user?.uid || currentUser?.id || '';
+    const updatedBranches = [...branches.filter(b => b.id !== newBranch.id), newBranch];
+    const newSettings = { ...settings, branches: updatedBranches };
+    setSettings(newSettings);
+    if (ownerId) saveSettingsToFirestore(newSettings, ownerId);
+  };
+
+  const updateBranch = (branchId: string, updates: Partial<BranchInfo>) => {
+    const ownerId = user?.uid || currentUser?.id || '';
+    const updatedBranches = branches.map(b => b.id === branchId ? { ...b, ...updates } : b);
+    const newSettings = { ...settings, branches: updatedBranches };
+    setSettings(newSettings);
+    if (ownerId) saveSettingsToFirestore(newSettings, ownerId);
+  };
+
+  const deleteBranch = (branchId: string) => {
+    const ownerId = user?.uid || currentUser?.id || '';
+    const updatedBranches = branches.filter(b => b.id !== branchId);
+    const newSettings = { ...settings, branches: updatedBranches };
+    setSettings(newSettings);
+    if (branch === branchId && updatedBranches.length > 0) {
+      setBranch(updatedBranches[0].id);
+    }
+    if (ownerId) saveSettingsToFirestore(newSettings, ownerId);
+  };
+
+  const loginStaff = async (phoneOrUsername: string, pin: string): Promise<{ success: boolean; message: string }> => {
+    const cleanInput = phoneOrUsername.trim().toLowerCase();
+    const cleanPin = pin.trim();
+    
+    const foundStaff = staff.find(s => 
+      s.active && 
+      (s.phone.replace(/[^0-9]/g, '') === cleanInput.replace(/[^0-9]/g, '') ||
+       s.name.toLowerCase() === cleanInput ||
+       s.phone === cleanInput)
+    );
+
+    if (!foundStaff) {
+      return { 
+        success: false, 
+        message: lang === 'bn' ? 'স্টাফ অ্যাকাউন্ট পাওয়া যায়নি বা এটি নিষ্ক্রিয় আছে।' : 'Staff account not found or inactive.' 
+      };
+    }
+
+    if (foundStaff.pin && foundStaff.pin !== cleanPin) {
+      return { 
+        success: false, 
+        message: lang === 'bn' ? 'ভুল সিকিউরিটি পিন! সঠিক ৪-ডিজিট পিন দিন।' : 'Incorrect security PIN. Please enter correct 4-digit PIN.' 
+      };
+    }
+
+    const roleMap: Record<StaffMember['role'], UserRole> = {
+      'Manager': 'BRANCH_MANAGER',
+      'Sales Executive': 'SALES_CASHIER',
+      'Technician': 'TECH_OPERATOR',
+      'Accountant': 'BRANCH_MANAGER'
+    };
+
+    const authU: AuthUser = {
+      id: foundStaff.id,
+      name: foundStaff.name,
+      username: foundStaff.phone,
+      email: `${foundStaff.phone.replace(/[^0-9]/g, '') || 'staff'}@phonesellpro.com`,
+      role: roleMap[foundStaff.role] || 'SALES_CASHIER',
+      branch: foundStaff.branch,
+      phone: foundStaff.phone,
+      securityPin: foundStaff.pin || '',
+      lastLogin: new Date().toISOString()
+    };
+
+    authLogin(authU);
+    return { success: true, message: lang === 'bn' ? 'সফলভাবে লগইন হয়েছে!' : 'Logged in successfully!' };
   };
 
   // Favourites Menu Shortcuts
@@ -1928,6 +2078,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       deleteParkedCart,
       branch,
       setBranch,
+      branches,
+      addBranch,
+      updateBranch,
+      deleteBranch,
       devices,
       addDevice,
       updateDevice,
@@ -1988,7 +2142,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       authLogout,
       loginGoogle,
       loginEmail,
-      registerEmail
+      registerEmail,
+      loginStaff
     }}>
       {children}
     </AppContext.Provider>

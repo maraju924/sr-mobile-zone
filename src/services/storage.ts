@@ -53,11 +53,16 @@ export const STORAGE_KEYS = {
 export const DEFAULT_SETTINGS: StoreSettings = {
   ownerId: '',
   storeName: 'PhoneSell PRO ডিজিটাল শপ',
-  phone: '+৮৮০',
-  address: 'দোকান ঠিকানা',
+  phone: '+৮৮০১৭০০০০০০০১',
+  address: 'ঈশ্বরগঞ্জ বাজার, ময়মনসিংহ',
   vatPercent: 0,
   currencySymbol: '৳',
-  invoiceFooter: 'ক্রয়কৃত পণ্যের অফিশিয়াল ওয়ারেন্টির জন্য ইনভয়েস ও বক্স সংরক্ষণ করুন।'
+  invoiceFooter: 'ক্রয়কৃত পণ্যের অফিশিয়াল ওয়ারেন্টির জন্য ইনভয়েস ও বক্স সংরক্ষণ করুন।',
+  branches: [
+    { id: 'BP-ISHWARGONJ', name: 'ঈশ্বরগঞ্জ ব্রাঞ্চ (BP-ISHWARGONJ)', address: 'ঈশ্বরগঞ্জ বাজার, ময়মনসিংহ', phone: '+৮৮০১৭০০০০০০০১', isDefault: true },
+    { id: 'BP-MYMENSINGH', name: 'ময়মনসিংহ ব্রাঞ্চ (BP-MYMENSINGH)', address: 'গাঙ্গিনার পাড়, ময়মনসিংহ', phone: '+৮৮০১৭০০০০০০০২' }
+  ],
+  defaultLabelOrientation: 'landscape'
 };
 
 // Zero Mock/Demo Data - 100% Pure Firebase

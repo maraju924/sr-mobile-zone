@@ -54,13 +54,29 @@ export const HomeDashboard: React.FC = () => {
   const currentYear = now.getFullYear();
   const currentMonth = now.getMonth();
 
+  // Branch-specific filtering (or all if 'ALL' selected)
+  const branchFilteredSales = useMemo(() => {
+    if (branch === 'ALL') return sales || [];
+    return (sales || []).filter(s => !s.branch || s.branch === branch);
+  }, [sales, branch]);
+
+  const branchFilteredInstallments = useMemo(() => {
+    if (branch === 'ALL') return installments || [];
+    return (installments || []).filter(i => !i.branch || i.branch === branch);
+  }, [installments, branch]);
+
+  const branchFilteredDevices = useMemo(() => {
+    if (branch === 'ALL') return devices || [];
+    return (devices || []).filter(d => !d.branch || d.branch === branch);
+  }, [devices, branch]);
+
   const thisMonthSales = useMemo(() => {
-    return (sales || []).filter(s => {
+    return branchFilteredSales.filter(s => {
       if (!s.createdAt) return false;
       const d = new Date(s.createdAt);
       return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
     });
-  }, [sales, currentYear, currentMonth]);
+  }, [branchFilteredSales, currentYear, currentMonth]);
 
   const monthSalesTotal = useMemo(() => {
     return thisMonthSales.reduce((sum, s) => sum + (s.total || 0), 0);
@@ -70,12 +86,12 @@ export const HomeDashboard: React.FC = () => {
   const lastMonthSales = useMemo(() => {
     const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
     const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
-    return (sales || []).filter(s => {
+    return branchFilteredSales.filter(s => {
       if (!s.createdAt) return false;
       const d = new Date(s.createdAt);
       return d.getFullYear() === lastMonthYear && d.getMonth() === lastMonth;
     }).reduce((sum, s) => sum + (s.total || 0), 0);
-  }, [sales, currentYear, currentMonth]);
+  }, [branchFilteredSales, currentYear, currentMonth]);
 
   const salesGrowthText = useMemo(() => {
     if (lastMonthSales === 0) {
@@ -96,13 +112,13 @@ export const HomeDashboard: React.FC = () => {
       d.setDate(d.getDate() - i);
       const dayStr = d.toISOString().split('T')[0];
       const dayDisplay = d.toLocaleDateString(lang === 'bn' ? 'bn-BD' : 'en-US', { day: '2-digit' });
-      const dayTotal = (sales || [])
+      const dayTotal = branchFilteredSales
         .filter(s => s.createdAt && s.createdAt.startsWith(dayStr))
         .reduce((sum, s) => sum + (s.total || 0), 0);
       days.push({ day: dayDisplay, amt: dayTotal });
     }
     return days;
-  }, [sales, lang]);
+  }, [branchFilteredSales, lang]);
 
   const maxSparklineAmt = Math.max(...sparklineDays.map(d => d.amt), 1);
 
@@ -113,30 +129,30 @@ export const HomeDashboard: React.FC = () => {
       if (cp.phone) set.add(cp.phone);
       else if (cp.id) set.add(cp.id);
     });
-    (sales || []).forEach(s => {
+    branchFilteredSales.forEach(s => {
       if (s.customerPhone && s.customerPhone !== 'N/A') set.add(s.customerPhone);
     });
-    (installments || []).forEach(inst => {
+    branchFilteredInstallments.forEach(inst => {
       if (inst.customerPhone && inst.customerPhone !== 'N/A') set.add(inst.customerPhone);
     });
     return set.size;
-  }, [customerProfiles, sales, installments]);
+  }, [customerProfiles, branchFilteredSales, branchFilteredInstallments]);
 
   const verifiedKycCount = useMemo(() => {
     return (customerProfiles || []).filter(c => c.nidNumber && c.nidNumber.trim()).length;
   }, [customerProfiles]);
 
-  const totalFinancedDevices = (devices || []).length;
-  const restrictedDevices = (devices || []).filter(d => d && (d.financeStatus === 'RESTRICTED' || d.lockStatus === 'LOCKED')).length;
+  const totalFinancedDevices = branchFilteredDevices.length;
+  const restrictedDevices = branchFilteredDevices.filter(d => d && (d.financeStatus === 'RESTRICTED' || d.lockStatus === 'LOCKED')).length;
   
   // Real Outstanding Due (Installments Balance + Sales Due)
   const totalOutstanding = useMemo(() => {
-    const instDue = (installments || []).reduce((acc, i) => acc + (i && i.status === 'completed' ? 0 : (i?.remainingBalance || 0)), 0);
-    const salesDue = (sales || []).reduce((acc, s) => acc + (s.dueAmount || 0), 0);
+    const instDue = branchFilteredInstallments.reduce((acc, i) => acc + (i && i.status === 'completed' ? 0 : (i?.remainingBalance || 0)), 0);
+    const salesDue = branchFilteredSales.reduce((acc, s) => acc + (s.dueAmount || 0), 0);
     return instDue + salesDue;
-  }, [installments, sales]);
+  }, [branchFilteredInstallments, branchFilteredSales]);
 
-  const overdueCount = (installments || []).filter(i => i && i.status === 'overdue').length;
+  const overdueCount = branchFilteredInstallments.filter(i => i && i.status === 'overdue').length;
 
   const todayStr = new Intl.DateTimeFormat(lang === 'bn' ? 'bn-BD' : 'en-US', {
     weekday: 'long',
@@ -146,7 +162,7 @@ export const HomeDashboard: React.FC = () => {
   }).format(new Date());
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-100 text-slate-800 space-y-5">
+    <div className="flex-1 overflow-y-auto p-3 sm:p-5 pb-24 sm:pb-8 bg-slate-100 text-slate-800 space-y-5">
       
       {/* 1. Greeting Banner & "This Month" Live Sales Trend */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-4 sm:p-6 shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">

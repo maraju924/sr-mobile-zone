@@ -876,7 +876,7 @@ export const PosTerminal: React.FC = () => {
 
       {/* RIGHT PANE: Cart & Full Multi-Mode Checkout Panel */}
       <div className={`
-        fixed lg:static inset-0 z-40 lg:z-auto
+        fixed lg:static inset-0 z-50 lg:z-auto
         w-full lg:w-[480px] xl:w-[520px]
         bg-white flex flex-col h-full shadow-2xl lg:shadow-none
         transition-transform duration-200
@@ -1635,7 +1635,7 @@ export const PosTerminal: React.FC = () => {
         </div>
 
         {/* MASTER CHECKOUT BUTTON & IN-PANEL ERROR DISPLAY */}
-        <div className="p-3 bg-white border-t border-slate-200 shrink-0 space-y-2">
+        <div className="p-3 pb-6 sm:pb-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-white border-t border-slate-200 shrink-0 space-y-2">
           
           {/* Real-time In-Drawer Error Display directly on top of action button */}
           {validationError && (

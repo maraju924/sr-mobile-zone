@@ -60,6 +60,27 @@ export const AccountingManager: React.FC = () => {
     setDescription('');
   };
 
+  // Branch-specific filtering
+  const branchSales = useMemo(() => {
+    if (branch === 'ALL') return sales || [];
+    return (sales || []).filter(s => !s.branch || s.branch === branch);
+  }, [sales, branch]);
+
+  const branchExpenses = useMemo(() => {
+    if (branch === 'ALL') return expenses || [];
+    return (expenses || []).filter(e => !e.branch || e.branch === branch);
+  }, [expenses, branch]);
+
+  const branchInstallments = useMemo(() => {
+    if (branch === 'ALL') return installments || [];
+    return (installments || []).filter(i => !i.branch || i.branch === branch);
+  }, [installments, branch]);
+
+  const branchJournals = useMemo(() => {
+    if (branch === 'ALL') return journalEntries || [];
+    return (journalEntries || []).filter(j => !j.branch || j.branch === branch);
+  }, [journalEntries, branch]);
+
   // 100% Dynamic Financial Calculations (Zero hardcoded mock numbers)
   const totalCashBank = useMemo(() => {
     if (accounts.length > 0) {
@@ -67,18 +88,18 @@ export const AccountingManager: React.FC = () => {
         .filter(a => a.type === 'Asset' && (a.accountName.includes('Cash') || a.accountName.includes('Bank') || a.accountName.includes('bKash') || a.accountName.includes('Nagad')))
         .reduce((sum, a) => sum + (a.balance || 0), 0);
     }
-    const salesPaid = (sales || []).reduce((sum, s) => sum + (s.paidAmount || 0), 0);
-    const expPaid = (expenses || []).reduce((sum, e) => sum + (e.amount || 0), 0);
+    const salesPaid = branchSales.reduce((sum, s) => sum + (s.paidAmount || 0), 0);
+    const expPaid = branchExpenses.reduce((sum, e) => sum + (e.amount || 0), 0);
     return Math.max(0, salesPaid - expPaid);
-  }, [accounts, sales, expenses]);
+  }, [accounts, branchSales, branchExpenses]);
 
   const totalReceivable = useMemo(() => {
     const accBal = accounts.find(a => a.accountName.toLowerCase().includes('receivable'))?.balance;
     if (accBal !== undefined) return accBal;
-    const instDue = (installments || []).reduce((sum, i) => sum + (i && i.status === 'completed' ? 0 : (i?.remainingBalance || 0)), 0);
-    const salesDue = (sales || []).reduce((sum, s) => sum + (s.dueAmount || 0), 0);
+    const instDue = branchInstallments.reduce((sum, i) => sum + (i && i.status === 'completed' ? 0 : (i?.remainingBalance || 0)), 0);
+    const salesDue = branchSales.reduce((sum, s) => sum + (s.dueAmount || 0), 0);
     return instDue + salesDue;
-  }, [accounts, installments, sales]);
+  }, [accounts, branchInstallments, branchSales]);
 
   const totalPayable = useMemo(() => {
     const accBal = accounts.find(a => a.accountName.toLowerCase().includes('payable'))?.balance;
@@ -87,19 +108,19 @@ export const AccountingManager: React.FC = () => {
   }, [accounts, suppliers]);
 
   // P&L Metrics from live sales & expenses
-  const totalRevenue = useMemo(() => (sales || []).reduce((sum, s) => sum + (s.total || 0), 0), [sales]);
-  const cashSalesRevenue = useMemo(() => (sales || []).filter(s => s.saleType !== 'installment').reduce((sum, s) => sum + (s.total || 0), 0), [sales]);
-  const installmentSalesRevenue = useMemo(() => (sales || []).filter(s => s.saleType === 'installment').reduce((sum, s) => sum + (s.total || 0), 0), [sales]);
+  const totalRevenue = useMemo(() => branchSales.reduce((sum, s) => sum + (s.total || 0), 0), [branchSales]);
+  const cashSalesRevenue = useMemo(() => branchSales.filter(s => s.saleType !== 'installment').reduce((sum, s) => sum + (s.total || 0), 0), [branchSales]);
+  const installmentSalesRevenue = useMemo(() => branchSales.filter(s => s.saleType === 'installment').reduce((sum, s) => sum + (s.total || 0), 0), [branchSales]);
   
   const totalCogs = useMemo(() => {
-    return (sales || []).reduce((sum, s) => {
+    return branchSales.reduce((sum, s) => {
       const itemsCost = (s.items || []).reduce((iSum, it) => iSum + ((it.purchasePrice || 0) * (it.quantity || 1)), 0);
       return sum + itemsCost;
     }, 0);
-  }, [sales]);
+  }, [branchSales]);
 
   const grossProfit = Math.max(0, totalRevenue - totalCogs);
-  const totalOperatingExpenses = useMemo(() => (expenses || []).reduce((sum, e) => sum + (e.amount || 0), 0), [expenses]);
+  const totalOperatingExpenses = useMemo(() => branchExpenses.reduce((sum, e) => sum + (e.amount || 0), 0), [branchExpenses]);
   const netOperatingProfit = grossProfit - totalOperatingExpenses;
 
   // Trial balance equity check
@@ -108,7 +129,7 @@ export const AccountingManager: React.FC = () => {
   const totalCredit = totalPayable + ownerCapital;
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-100 text-slate-800 space-y-4">
+    <div className="flex-1 overflow-y-auto p-3 sm:p-5 pb-24 sm:pb-8 bg-slate-100 text-slate-800 space-y-4">
       
       {/* Top Banner Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -251,7 +272,7 @@ export const AccountingManager: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {journalEntries.length === 0 ? (
+              {branchJournals.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="py-8 text-center text-slate-400">
                     <FileText className="w-8 h-8 mx-auto text-slate-300 mb-2" />
@@ -260,7 +281,7 @@ export const AccountingManager: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                journalEntries.map(j => (
+                branchJournals.map(j => (
                   <tr key={j.id} className="hover:bg-slate-50 transition">
                     <td className="py-3 px-4 font-mono font-bold text-slate-800">
                       <div>{j.date}</div>

@@ -109,7 +109,7 @@ const AppContent: React.FC = () => {
         />
 
         {/* Dynamic Route Content */}
-        <main className="flex-1 flex overflow-hidden pb-16 lg:pb-0 relative">
+        <main className="flex-1 flex overflow-hidden pb-[60px] lg:pb-0 relative">
           {activeTab === 'home' && <HomeDashboard />}
           {activeTab === 'devices' && (
             <DeviceErrorBoundary>
@@ -141,7 +141,7 @@ const AppContent: React.FC = () => {
       <BottomTabs onOpenMenu={() => setIsSidebarOpen(true)} />
 
       {/* App Bottom Footer Bar (Desktop only) */}
-      <footer className="bg-white border-t border-slate-200 px-4 py-1.5 text-xs text-slate-500 hidden sm:flex items-center justify-between shrink-0 select-none z-10 print:hidden">
+      <footer className="bg-white border-t border-slate-200 px-4 py-1.5 text-xs text-slate-500 hidden lg:flex items-center justify-between shrink-0 select-none z-10 print:hidden">
         <div className="flex items-center gap-2 text-[11px]">
           <span className="font-semibold text-slate-700">PhoneSell Pro Enterprise</span>
           <span className="text-slate-300">•</span>

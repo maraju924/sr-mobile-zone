@@ -39,58 +39,49 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col my-auto border border-slate-200">
+    <div className="fixed inset-0 z-50 flex sm:items-center sm:justify-center bg-black/80 backdrop-blur-xs p-0 sm:p-4 overflow-hidden animate-in fade-in">
+      <div className="bg-white sm:rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col h-full sm:h-auto sm:max-h-[92vh] border-0 sm:border border-slate-200">
         
         {/* Top Control Bar (Hidden during print) */}
-        <div className="flex flex-wrap items-center justify-between px-4 sm:px-6 py-3 bg-slate-900 text-white border-b border-slate-800 gap-2 no-print">
-          <div className="flex items-center gap-2">
-            <span className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
-              <CheckCircle className="w-5 h-5" />
+        <div className="flex items-center justify-between px-3.5 sm:px-6 py-2.5 sm:py-3 bg-slate-900 text-white border-b border-slate-800 gap-2 no-print shrink-0">
+          <div className="flex items-center gap-2 overflow-hidden">
+            <span className="p-1 sm:p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 shrink-0">
+              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
             </span>
-            <div>
-              <h3 className="font-semibold text-sm sm:text-base leading-tight">
+            <div className="overflow-hidden">
+              <h3 className="font-bold text-xs sm:text-base leading-tight truncate">
                 {t('বিক্রয় ইনভয়েস ও রসিদ', 'Sales Invoice & Receipt')}
               </h3>
-              <p className="text-xs text-slate-400 font-mono">{sale.invoiceNumber}</p>
+              <p className="text-[10px] sm:text-xs text-slate-400 font-mono truncate">{sale.invoiceNumber}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Format Toggle */}
             <div className="flex bg-slate-800 p-0.5 rounded-lg text-xs">
               <button
                 onClick={() => setPrintFormat('a4')}
-                className={`px-3 py-1.5 rounded-md font-medium transition ${
-                  printFormat === 'a4' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md font-medium text-xs transition cursor-pointer ${
+                  printFormat === 'a4' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                A4 চালান
+                A4
               </button>
               <button
                 onClick={() => setPrintFormat('thermal')}
-                className={`px-3 py-1.5 rounded-md font-medium transition ${
-                  printFormat === 'thermal' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                className={`px-2 sm:px-3 py-1 sm:py-1.5 rounded-md font-medium text-xs transition cursor-pointer ${
+                  printFormat === 'thermal' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                ৮০মিমি POS
+                POS
               </button>
             </div>
-
-            {/* Print Button */}
-            <button
-              onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow-sm transition"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>{t('প্রিন্ট করুন', 'Print')}</span>
-            </button>
 
             {/* Share */}
             <button
               onClick={handleShareWhatsApp}
               title={t('হোয়াটসঅ্যাপে পাঠান', 'Share on WhatsApp')}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg transition"
+              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 rounded-lg transition cursor-pointer"
             >
               <Share2 className="w-4 h-4" />
             </button>
@@ -98,15 +89,15 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             {/* Close */}
             <button
               onClick={onClose}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition"
+              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition cursor-pointer min-h-[36px] min-w-[36px] flex items-center justify-center"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Invoice Printable View */}
-        <div className="p-4 sm:p-8 overflow-y-auto max-h-[80vh] bg-slate-50/50">
+        {/* Invoice Printable View (Scrollable) */}
+        <div className="p-3 sm:p-8 overflow-y-auto flex-1 bg-slate-50/50">
           
           <div 
             id="printable-invoice" 
@@ -285,25 +276,25 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         </div>
 
         {/* Bottom Actions */}
-        <div className="px-6 py-3 bg-white border-t border-slate-200 flex items-center justify-between no-print">
+        <div className="px-4 sm:px-6 py-2.5 sm:py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-white border-t border-slate-200 flex items-center justify-between no-print shrink-0">
           <button
             onClick={handleCopyText}
-            className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 font-medium py-1 px-3 rounded-lg hover:bg-slate-100 transition"
+            className="flex items-center gap-1.5 text-xs text-slate-600 hover:text-slate-900 font-medium py-1 px-2.5 sm:px-3 rounded-lg hover:bg-slate-100 transition cursor-pointer"
           >
             <FileText className="w-4 h-4 text-slate-500" />
-            <span>{copied ? t('কপি হয়েছে!', 'Copied!') : t('টেক্সট কপি করুন', 'Copy Summary')}</span>
+            <span>{copied ? t('কপি হয়েছে!', 'Copied!') : t('টেক্সট কপি', 'Copy Text')}</span>
           </button>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+              className="px-3 sm:px-4 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer min-h-[40px]"
             >
               {t('বন্ধ করুন', 'Close')}
             </button>
             <button
               onClick={handlePrint}
-              className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-md shadow-indigo-100 transition"
+              className="flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-100 transition cursor-pointer min-h-[40px]"
             >
               <Printer className="w-4 h-4" />
               <span>{t('প্রিন্ট ইনভয়েস', 'Print Invoice')}</span>

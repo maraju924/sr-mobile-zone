@@ -129,54 +129,54 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
   const isLocked = device.lockStatus === 'LOCKED';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-2 sm:p-4 overflow-y-auto animate-in fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden border border-slate-200 flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex sm:items-center sm:justify-center bg-black/80 backdrop-blur-xs p-0 sm:p-4 overflow-hidden animate-in fade-in">
+      <div className="bg-white sm:rounded-2xl shadow-2xl w-full max-w-5xl overflow-hidden border-0 sm:border border-slate-200 flex flex-col h-full sm:h-auto sm:max-h-[92vh]">
         
         {/* Top Header Bar */}
-        <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-md ${
+        <div className="px-3.5 sm:px-5 py-3 sm:py-3.5 bg-slate-900 text-white flex items-center justify-between shrink-0 border-b border-slate-800">
+          <div className="flex items-center gap-2.5 sm:gap-3 overflow-hidden">
+            <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-md shrink-0 ${
               isLocked ? 'bg-rose-600' : 'bg-emerald-600'
             }`}>
-              {isLocked ? <Lock className="w-5 h-5 animate-pulse" /> : <Unlock className="w-5 h-5" />}
+              {isLocked ? <Lock className="w-4 h-4 sm:w-5 sm:h-5 animate-pulse" /> : <Unlock className="w-4 h-4 sm:w-5 sm:h-5" />}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-extrabold text-base sm:text-lg leading-tight text-white">
+            <div className="overflow-hidden">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h3 className="font-extrabold text-sm sm:text-lg leading-tight text-white truncate max-w-[150px] sm:max-w-none">
                   {device.model}
                 </h3>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                <span className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-mono font-bold uppercase ${
                   device.liveStatus === 'online' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-700 text-slate-300'
                 }`}>
                   {device.liveStatus}
                 </span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase ${
+                <span className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-mono font-bold uppercase ${
                   isLocked ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
                 }`}>
-                  {device.lockStatus}
+                  {isLocked ? 'লকড' : 'সক্রিয়'}
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5 font-mono">
-                <span>IMEI1: {device.imei1}</span>
-                {device.imei2 && <span>• IMEI2: {device.imei2}</span>}
-                <span>• {device.branch}</span>
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-0.5 font-mono truncate">
+                <span>IMEI: {device.imei1}</span>
+                <span className="hidden sm:inline">• {device.branch}</span>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={() => handleExecuteCommand('LOCATE')}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition border border-slate-700"
+              className="px-2.5 sm:px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition border border-slate-700 cursor-pointer"
               title="Request Check-in & Sync"
             >
               <RefreshCw className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden sm:inline">Sync Now</span>
+              <span className="hidden sm:inline">Sync</span>
             </button>
 
             <button
               onClick={onClose}
-              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="p-1.5 sm:p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer min-h-[38px] min-w-[38px] flex items-center justify-center"
+              title="Close modal"
             >
               <X className="w-5 h-5" />
             </button>
@@ -184,20 +184,20 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
         </div>
 
         {/* Master Lock Banner & Direct Action */}
-        <div className={`px-5 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 border-b ${
+        <div className={`px-3.5 sm:px-5 py-3 sm:py-3.5 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 border-b ${
           isLocked ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50/60 border-emerald-200'
         }`}>
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-xl text-white ${isLocked ? 'bg-rose-600' : 'bg-emerald-600'}`}>
-              {isLocked ? <Lock className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5" />}
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className={`p-2 rounded-xl text-white shrink-0 ${isLocked ? 'bg-rose-600' : 'bg-emerald-600'}`}>
+              {isLocked ? <Lock className="w-4 h-4 sm:w-5 sm:h-5" /> : <ShieldAlert className="w-4 h-4 sm:w-5 sm:h-5" />}
             </div>
-            <div>
-              <div className={`font-bold text-sm ${isLocked ? 'text-rose-900' : 'text-emerald-950'}`}>
-                {isLocked ? 'হ্যান্ডসেটটি বর্তমানে সম্পূর্ণ লক (FREEZE) অবস্থায় আছে' : 'ডিভাইসটি সক্রিয় এবং আনলক রয়েছে'}
+            <div className="min-w-0">
+              <div className={`font-bold text-xs sm:text-sm truncate ${isLocked ? 'text-rose-900' : 'text-emerald-950'}`}>
+                {isLocked ? 'ডিভাইস বর্তমানে সম্পূর্ণ লক (FREEZE) অবস্থায় আছে' : 'ডিভাইসটি সক্রিয় এবং আনলক রয়েছে'}
               </div>
-              <div className="text-xs text-slate-600">
-                গ্রাহক: <span className="font-semibold text-slate-900">{device.customerName}</span> ({device.customerPhone}) 
-                • বকেয়া: <span className="font-mono font-bold text-rose-600">{formatCurrency(device.outstandingDue)}</span>
+              <div className="text-[11px] sm:text-xs text-slate-600 truncate">
+                গ্রাহক: <span className="font-semibold text-slate-900">{device.customerName}</span> 
+                {' • '}বকেয়া: <span className="font-mono font-bold text-rose-600">{formatCurrency(device.outstandingDue)}</span>
               </div>
             </div>
           </div>
@@ -213,7 +213,7 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
               });
               setPinModalOpen(true);
             }}
-            className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-extrabold text-sm shadow-md transition-all transform active:scale-95 flex items-center justify-center gap-2 text-white ${
+            className={`w-full sm:w-auto min-h-[44px] px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm shadow-md transition-all transform active:scale-95 flex items-center justify-center gap-2 text-white cursor-pointer ${
               isLocked 
                 ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-950/20' 
                 : 'bg-rose-600 hover:bg-rose-700 shadow-rose-950/20'
@@ -221,12 +221,12 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
           >
             {isLocked ? (
               <>
-                <Unlock className="w-4 h-4" />
+                <Unlock className="w-4 h-4 stroke-[2.5]" />
                 <span>RESTORE DEVICE (আনলক করুন)</span>
               </>
             ) : (
               <>
-                <Lock className="w-4 h-4" />
+                <Lock className="w-4 h-4 stroke-[2.5]" />
                 <span>FREEZE DEVICE (তাত্ক্ষণিক লক করুন)</span>
               </>
             )}
@@ -235,14 +235,14 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
 
         {/* Feedback Alert Bar */}
         {commandFeedback && (
-          <div className="bg-indigo-600 text-white px-5 py-2 text-xs font-semibold flex items-center justify-between animate-in fade-in">
+          <div className="bg-indigo-600 text-white px-4 sm:px-5 py-2 text-xs font-semibold flex items-center justify-between animate-in fade-in shrink-0">
             <span>✓ {commandFeedback}</span>
-            <button onClick={() => setCommandFeedback(null)} className="text-indigo-200 hover:text-white">✕</button>
+            <button onClick={() => setCommandFeedback(null)} className="text-indigo-200 hover:text-white px-1">✕</button>
           </div>
         )}
 
         {/* Navigation Tabs */}
-        <div className="px-5 bg-slate-50 border-b border-slate-200 flex items-center gap-2 overflow-x-auto text-xs shrink-0 select-none py-1">
+        <div className="px-3 sm:px-5 bg-slate-50 border-b border-slate-200 flex items-center gap-1 sm:gap-2 overflow-x-auto text-xs shrink-0 select-none py-1.5">
           {[
             { id: 'commands', label: 'Command Center (১৪টা কমান্ড)', icon: Sliders },
             { id: 'telemetry', label: 'Live Status & Codes', icon: Radio },
@@ -272,19 +272,19 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="flex-1 overflow-y-auto p-5 text-xs text-slate-800 space-y-5">
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-5 pb-32 sm:pb-8 text-xs text-slate-800 space-y-4">
           
           {/* TAB 1: 14 COMMAND CENTER */}
           {activeTab === 'commands' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h4 className="font-bold text-sm text-slate-900">14 Enterprise Device Commands</h4>
-                  <p className="text-slate-500">ডিভাইস অনলাইনে থাকলে সাথে সাথে এবং অফলাইনে থাকলে SMS চ্যানেলে কমান্ড কার্যকর হবে।</p>
+                  <p className="text-slate-500 text-[11px] sm:text-xs">ডিভাইস অনলাইনে থাকলে সাথে সাথে এবং অফলাইনে থাকলে SMS চ্যানেলে কমান্ড কার্যকর হবে।</p>
                 </div>
                 <button
                   onClick={() => sendSms(device.customerPhone, device.customerName, `LOCK COMMAND DISPATCHED FOR IMEI: ${device.imei1}`)}
-                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg font-semibold flex items-center gap-1 transition"
+                  className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg font-semibold flex items-center justify-center gap-1 transition self-start sm:self-auto text-xs cursor-pointer"
                   title="Fallback over GSM SMS"
                 >
                   <Send className="w-3.5 h-3.5 text-amber-600" />
@@ -293,35 +293,35 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
               </div>
 
               {/* 14 Command Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                 
                 {/* 1. Locate */}
                 <button
                   onClick={() => handleExecuteCommand('LOCATE')}
-                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800">1. Locate</span>
                     <MapPin className="w-4 h-4 text-indigo-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500">জিপিএস কোঅর্ডিনেট পিং ও লোকেশন আপডেট</span>
+                  <span className="text-[10px] text-slate-500 mt-1">জিপিএস কোঅর্ডিনেট পিং ও লোকেশন আপডেট</span>
                 </button>
 
                 {/* 2. Capture Photo */}
                 <button
                   onClick={() => handleExecuteCommand('CAPTURE_PHOTO')}
-                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800">2. Capture Photo</span>
                     <Camera className="w-4 h-4 text-indigo-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500">সামনের ক্যামেরা দিয়ে রিমোট ছবি তুলবে</span>
+                  <span className="text-[10px] text-slate-500 mt-1">সামনের ক্যামেরা দিয়ে রিমোট ছবি তুলবে</span>
                 </button>
 
                 {/* 3. Send Notice */}
-                <div className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col justify-between h-24 col-span-2">
-                  <div className="flex items-center justify-between mb-1">
+                <div className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col justify-between min-h-[80px] col-span-1 sm:col-span-2">
+                  <div className="flex items-center justify-between mb-1.5">
                     <span className="font-bold text-slate-800">3. Send Custom Notice</span>
                     <Bell className="w-4 h-4 text-indigo-600" />
                   </div>
@@ -331,11 +331,11 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
                       placeholder="স্ক্রিনের মেসেজ লিখুন..."
                       value={customNoticeText}
                       onChange={e => setCustomNoticeText(e.target.value)}
-                      className="flex-1 px-2 py-1 bg-slate-50 border border-slate-300 rounded text-xs"
+                      className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs"
                     />
                     <button
                       onClick={handleSendNotice}
-                      className="px-2.5 py-1 bg-indigo-600 text-white font-bold rounded hover:bg-indigo-700 shrink-0"
+                      className="px-3 py-1.5 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shrink-0 cursor-pointer min-h-[34px]"
                     >
                       Push
                     </button>
@@ -345,54 +345,54 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
                 {/* 4. Alarm Alert */}
                 <button
                   onClick={() => handleExecuteCommand('ALARM_SIREN')}
-                  className="p-3 bg-white hover:bg-amber-50/60 border border-slate-200 hover:border-amber-300 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-white hover:bg-amber-50/60 border border-slate-200 hover:border-amber-300 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800">4. Alarm Alert</span>
                     <AlertTriangle className="w-4 h-4 text-amber-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500">সাইলেন্ট থাকলেও উচ্চস্বরে সাইরেন বাজবে</span>
+                  <span className="text-[10px] text-slate-500 mt-1">সাইলেন্ট থাকলেও উচ্চস্বরে সাইরেন বাজবে</span>
                 </button>
 
                 {/* 5. Popup */}
                 <button
                   onClick={() => handleExecuteCommand('SHOW_POPUP')}
-                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800">5. Sticky Popup</span>
                     <FileText className="w-4 h-4 text-indigo-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500">স্ক্রিনের মাঝে স্থায়ী বকেয়া পপআপ</span>
+                  <span className="text-[10px] text-slate-500 mt-1">স্ক্রিনের মাঝে স্থায়ী বকেয়া পপআপ</span>
                 </button>
 
                 {/* 6. Wallpaper */}
                 <button
                   onClick={() => handleExecuteCommand('SET_WALLPAPER')}
-                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800">6. Set Wallpaper</span>
                     <Image className="w-4 h-4 text-indigo-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500">দোকানের সতর্কবার্তা ওয়ালপেপার সেট</span>
+                  <span className="text-[10px] text-slate-500 mt-1">দোকানের সতর্কবার্তা ওয়ালপেপার সেট</span>
                 </button>
 
                 {/* 7. Camera Block */}
                 <button
                   onClick={() => handleExecuteCommand('TOGGLE_CAMERA')}
-                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800">7. Toggle Camera</span>
                     <Camera className="w-4 h-4 text-slate-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500">হার্ডওয়্যার ক্যামেরা অন/অফ রেস্ট্রিকশন</span>
+                  <span className="text-[10px] text-slate-500 mt-1">হার্ডওয়্যার ক্যামেরা অন/অফ রেস্ট্রিকশন</span>
                 </button>
 
                 {/* 8. Screen-lock PIN */}
-                <div className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col justify-between h-24 col-span-2">
-                  <div className="flex items-center justify-between mb-1">
+                <div className="p-3 bg-white border border-slate-200 rounded-xl flex flex-col justify-between min-h-[80px] col-span-1 sm:col-span-2">
+                  <div className="flex items-center justify-between mb-1.5">
                     <span className="font-bold text-slate-800">8. Set Lock PIN</span>
                     <Key className="w-4 h-4 text-indigo-600" />
                   </div>
@@ -402,11 +402,11 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
                       placeholder="নতুন পাসওয়ার্ড (e.g. 1234)"
                       value={customPinText}
                       onChange={e => setCustomPinText(e.target.value)}
-                      className="flex-1 px-2 py-1 bg-slate-50 border border-slate-300 rounded text-xs font-mono"
+                      className="flex-1 px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono"
                     />
                     <button
                       onClick={handleSetPin}
-                      className="px-2.5 py-1 bg-slate-800 text-white font-bold rounded hover:bg-slate-700 shrink-0"
+                      className="px-3 py-1.5 bg-slate-800 text-white font-bold rounded-lg hover:bg-slate-700 shrink-0 cursor-pointer min-h-[34px]"
                     >
                       Update PIN
                     </button>
@@ -416,13 +416,13 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
                 {/* 9. Geofence */}
                 <button
                   onClick={() => handleExecuteCommand('SET_GEOFENCE')}
-                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800">9. Geofence Boundary</span>
                     <Navigation className="w-4 h-4 text-indigo-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500">ময়মনসিংহ এলাকার বাইরে গেলে অটো অ্যালার্ট</span>
+                  <span className="text-[10px] text-slate-500 mt-1">ময়মনসিংহ এলাকার বাইরে গেলে অটো অ্যালার্ট</span>
                 </button>
 
                 {/* 10. Send by SMS */}
@@ -431,61 +431,61 @@ export const DeviceDetailModal: React.FC<DeviceDetailModalProps> = ({ device, is
                     sendSms(device.customerPhone, device.customerName, `Locker Policy enforced on IMEI: ${device.imei1}`);
                     setCommandFeedback('SMS Gateway transmitted command payload.');
                   }}
-                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-white hover:bg-indigo-50/60 border border-slate-200 hover:border-indigo-300 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800">10. Send by SMS</span>
                     <Send className="w-4 h-4 text-blue-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500">অফলাইন ডিভাইসে বাইনারি এসএমএস পুশ</span>
+                  <span className="text-[10px] text-slate-500 mt-1">অফলাইন ডিভাইসে বাইনারি এসএমএস পুশ</span>
                 </button>
 
                 {/* 11. Mark Lost */}
                 <button
                   onClick={() => handleExecuteCommand('MARK_LOST', 'Customer reported stolen / Absconded')}
-                  className="p-3 bg-white hover:bg-rose-50/60 border border-slate-200 hover:border-rose-300 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-white hover:bg-rose-50/60 border border-slate-200 hover:border-rose-300 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-rose-700">11. Mark as Lost</span>
                     <Flag className="w-4 h-4 text-rose-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500">চুরি বা পলাতক চিহ্নিত ও অটো হার্ড লক</span>
+                  <span className="text-[10px] text-slate-500 mt-1">চুরি বা পলাতক চিহ্নিত ও অটো হার্ড লক</span>
                 </button>
 
                 {/* 12. Release Device */}
                 <button
                   onClick={() => handleExecuteCommand('RELEASE_DEVICE', 'Loan fully cleared')}
-                  className="p-3 bg-white hover:bg-emerald-50/60 border border-slate-200 hover:border-emerald-300 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-white hover:bg-emerald-50/60 border border-slate-200 hover:border-emerald-300 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-emerald-700">12. Release Device</span>
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500">কিস্তি শেষ: লকার পারমিশন সম্পূর্ণ আনইনস্টল</span>
+                  <span className="text-[10px] text-slate-500 mt-1">কিস্তি শেষ: লকার পারমিশন সম্পূর্ণ আনইনস্টল</span>
                 </button>
 
                 {/* 13. Reboot */}
                 <button
                   onClick={() => handleExecuteCommand('REBOOT_DEVICE')}
-                  className="p-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-800">13. Remote Reboot</span>
                     <RotateCw className="w-4 h-4 text-slate-600" />
                   </div>
-                  <span className="text-[10px] text-slate-500">ডিভাইস দূর থেকে রিস্টার্ট করা</span>
+                  <span className="text-[10px] text-slate-500 mt-1">ডিভাইস দূর থেকে রিস্টার্ট করা</span>
                 </button>
 
                 {/* 14. Wipe Device */}
                 <button
                   onClick={() => setShowWipeWarning(true)}
-                  className="p-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl text-left transition flex flex-col justify-between h-24"
+                  className="p-3 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl text-left transition flex flex-col justify-between min-h-[80px] cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-rose-800">14. Wipe Device</span>
                     <Trash2 className="w-4 h-4 text-rose-700" />
                   </div>
-                  <span className="text-[10px] text-rose-700 font-semibold">ফ্যাক্টরি রিসেট (সকল ডেটা মুছে ফেলা)</span>
+                  <span className="text-[10px] text-rose-700 font-semibold mt-1">ফ্যাক্টরি রিসেট (সকল ডেটা মুছে ফেলা)</span>
                 </button>
 
               </div>

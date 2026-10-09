@@ -14,26 +14,29 @@ import {
 } from 'lucide-react';
 
 export const StaffManager: React.FC = () => {
-  const { staff, addStaff, toggleStaffStatus, formatCurrency, branch, lang } = useApp();
+  const { staff, addStaff, toggleStaffStatus, formatCurrency, branch, branches, lang } = useApp();
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [selectedBranch, setSelectedBranch] = useState(branch === 'ALL' ? (branches[0]?.id || 'BP-ISHWARGONJ') : branch);
   const [role, setRole] = useState<StaffMember['role']>('Sales Executive');
   const [salary, setSalary] = useState('18000');
   const [commission, setCommission] = useState('1.5');
+  const [pin, setPin] = useState('1234');
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !phone) return;
 
     addStaff({
-      branch,
+      branch: selectedBranch,
       name,
       phone,
       role,
       salary: parseFloat(salary) || 0,
       salesCommissionPercent: parseFloat(commission) || 0,
+      pin: pin.trim() || undefined,
       active: true,
       joinedDate: new Date().toISOString().split('T')[0]
     });
@@ -41,12 +44,13 @@ export const StaffManager: React.FC = () => {
     setShowAddModal(false);
     setName('');
     setPhone('');
+    setPin('1234');
   };
 
   const totalPayroll = staff.filter(s => s.active).reduce((sum, s) => sum + s.salary, 0);
 
   return (
-    <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-100 text-slate-800 space-y-4">
+    <div className="flex-1 overflow-y-auto p-3 sm:p-5 pb-24 sm:pb-8 bg-slate-100 text-slate-800 space-y-4">
       
       {/* Top Banner Bar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -191,6 +195,33 @@ export const StaffManager: React.FC = () => {
                 onChange={e => setPhone(e.target.value)}
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono"
               />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">নির্ধারিত ব্রাঞ্চ *</label>
+                <select
+                  value={selectedBranch}
+                  onChange={e => setSelectedBranch(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold"
+                >
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">লগইন পিন (৪ ডিজিট)</label>
+                <input
+                  type="password"
+                  maxLength={6}
+                  placeholder="1234"
+                  value={pin}
+                  onChange={e => setPin(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-center tracking-widest font-bold"
+                />
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

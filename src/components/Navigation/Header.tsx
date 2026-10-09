@@ -32,6 +32,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const { 
     branch, 
     setBranch, 
+    branches: contextBranches,
     lang, 
     setLang, 
     activeTab, 
@@ -49,7 +50,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showUniversalScanner, setShowUniversalScanner] = useState(false);
 
-  const branches: Branch[] = ['BP-ISHWARGONJ', 'BP-MYMENSINGH'];
+  const availableBranches = contextBranches || [];
+  const isBranchLocked = currentUser?.branch && currentUser.branch !== 'ALL';
   const unreadChats = (chatMessages || []).filter(m => m && m.sender === 'customer' && !m.read).length;
   const unreadNotifications = (notifications || []).filter(n => n && !n.read).length;
   const lockedDevicesCount = (devices || []).filter(d => d && d.lockStatus === 'LOCKED').length;
@@ -105,47 +107,78 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         {/* Branch Switcher */}
         <div className="relative">
-          <button
-            onClick={() => setShowBranchMenu(!showBranchMenu)}
-            className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition"
-          >
-            <Building2 className="w-3.5 h-3.5 text-indigo-400" />
-            <span className="truncate max-w-[110px] sm:max-w-none">{branch}</span>
-            <ChevronDown className="w-3 h-3 text-slate-400" />
-          </button>
-
-          {showBranchMenu && (
-            <div className="absolute right-0 mt-1.5 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl py-1 z-50 text-xs animate-in fade-in">
-              <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700">
-                Switch Branch (মাল্টি-ব্রাঞ্চ)
-              </div>
-              {branches.map(b => (
-                <button
-                  key={b}
-                  onClick={() => {
-                    setBranch(b);
-                    setShowBranchMenu(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-700 transition ${
-                    branch === b ? 'text-indigo-300 font-bold bg-indigo-950/40' : 'text-slate-300'
-                  }`}
-                >
-                  <span>{b}</span>
-                  {branch === b && <Check className="w-3.5 h-3.5 text-indigo-400" />}
-                </button>
-              ))}
+          {isBranchLocked ? (
+            <div className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 bg-slate-800 border border-slate-700 text-indigo-300 rounded-lg text-xs font-semibold">
+              <Building2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+              <span className="truncate max-w-[75px] sm:max-w-[130px]">{branch}</span>
             </div>
+          ) : (
+            <>
+              <button
+                onClick={() => setShowBranchMenu(!showBranchMenu)}
+                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition cursor-pointer"
+              >
+                <Building2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                <span className="truncate max-w-[75px] sm:max-w-none">
+                  {branch === 'ALL' ? (lang === 'bn' ? 'সকল' : 'All') : branch}
+                </span>
+                <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+              </button>
+
+              {showBranchMenu && (
+                <div className="absolute right-0 mt-1.5 w-56 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl py-1 z-50 text-xs animate-in fade-in">
+                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-700">
+                    {lang === 'bn' ? 'ব্রাঞ্চ পরিবর্তন করুন' : 'Switch Branch'}
+                  </div>
+                  
+                  {/* All Branches Option for Super Admins */}
+                  {currentUser?.role === 'SUPER_ADMIN' && (
+                    <button
+                      onClick={() => {
+                        setBranch('ALL');
+                        setShowBranchMenu(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-700 transition border-b border-slate-700/50 ${
+                        branch === 'ALL' ? 'text-indigo-300 font-bold bg-indigo-950/40' : 'text-slate-300'
+                      }`}
+                    >
+                      <span>{lang === 'bn' ? '🌐 সকল ব্রাঞ্চ (একত্রে)' : '🌐 All Branches (Consolidated)'}</span>
+                      {branch === 'ALL' && <Check className="w-3.5 h-3.5 text-indigo-400" />}
+                    </button>
+                  )}
+
+                  {availableBranches.map(b => (
+                    <button
+                      key={b.id}
+                      onClick={() => {
+                        setBranch(b.id);
+                        setShowBranchMenu(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-700 transition ${
+                        branch === b.id ? 'text-indigo-300 font-bold bg-indigo-950/40' : 'text-slate-300'
+                      }`}
+                    >
+                      <div className="truncate">
+                        <span className="block font-medium">{b.name}</span>
+                        {b.address && <span className="block text-[10px] text-slate-400 truncate">{b.address}</span>}
+                      </div>
+                      {branch === b.id && <Check className="w-3.5 h-3.5 text-indigo-400 shrink-0 ml-2" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* Quick Create (+) Button */}
-        <div className="relative">
+        {/* Quick Create (+) Button (Desktop & Tablet) */}
+        <div className="relative hidden sm:block">
           <button
             onClick={() => setShowQuickCreate(!showQuickCreate)}
-            className="flex items-center gap-1 px-2 sm:px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition shadow-xs"
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
             title="Quick Create"
           >
             <Plus className="w-4 h-4" />
@@ -199,27 +232,27 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         {/* Universal Barcode & IMEI Scanner Button */}
         <button
           onClick={() => setShowUniversalScanner(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg text-xs font-bold transition shadow-sm active:scale-95"
+          className="flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-lg text-xs font-bold transition shadow-xs active:scale-95 cursor-pointer shrink-0"
           title="বারকোড ও IMEI স্ক্যান করুন (Universal Scanner)"
         >
-          <Barcode className="w-3.5 h-3.5 text-white" />
+          <Barcode className="w-4 h-4 text-white" />
           <span className="hidden sm:inline">স্ক্যানার</span>
         </button>
 
-        {/* Language Toggle (EN / BN) */}
+        {/* Language Toggle (EN / BN) (Hidden on mobile phone, available in settings/sidebar) */}
         <button
           onClick={() => setLang(lang === 'en' ? 'bn' : 'en')}
-          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300 transition flex items-center gap-1"
+          className="hidden sm:flex px-2 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-lg text-xs font-mono font-bold text-slate-300 transition items-center gap-1 cursor-pointer"
           title="Toggle Language"
         >
           <Globe className="w-3.5 h-3.5 text-slate-400" />
           <span>{lang === 'en' ? 'EN' : 'বাং'}</span>
         </button>
 
-        {/* Support Chat Icon with badge */}
+        {/* Support Chat Icon with badge (Hidden on mobile phone because it is on BottomTabs) */}
         <button
           onClick={() => setActiveTab('chat')}
-          className="relative p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition"
+          className="hidden sm:flex relative p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
           title="Customer Chat"
         >
           <MessageSquare className="w-4 h-4" />
@@ -231,10 +264,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
         </button>
 
         {/* Notification Bell with red badge */}
-        <div className="relative">
+        <div className="relative shrink-0">
           <button
             onClick={() => setShowNotifications(!showNotifications)}
-            className="relative p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition"
+            className="relative p-1.5 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition cursor-pointer"
             title="Notifications & Alerts"
           >
             <Bell className="w-4 h-4" />

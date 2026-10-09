@@ -11,6 +11,7 @@ export interface Product {
   minStockAlert: number;
   warrantyMonths: number;
   serialNumbers?: string[];
+  branch?: string;
   createdAt: string;
   updatedAt?: string;
 }
@@ -61,6 +62,7 @@ export interface Sale {
   saleType: SaleType;
   installmentId?: string;
   note?: string;
+  branch?: string;
   dueDeadline?: string;
   creditTermDays?: number;
   followUps?: FollowUpLog[];
@@ -129,6 +131,7 @@ export interface Installment {
   guarantor2Relation?: string;
 
   productNameSummary: string;
+  branch?: string;
   totalAmount: number;
   downPayment: number;
   remainingBalance: number;
@@ -164,6 +167,14 @@ export interface ReturnClaim {
   resolvedAt?: string;
 }
 
+export interface BranchInfo {
+  id: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  isDefault?: boolean;
+}
+
 export interface StoreSettings {
   ownerId: string;
   storeName: string;
@@ -173,6 +184,11 @@ export interface StoreSettings {
   currencySymbol: string;
   invoiceFooter: string;
   deviceCredits?: number;
+  branches?: BranchInfo[];
+  defaultLabelOrientation?: 'landscape' | 'portrait';
+  defaultLabelPresetId?: string;
+  smsGatewayApiKey?: string;
+  smsGatewaySenderId?: string;
 }
 
 export interface NotificationItem {
@@ -277,6 +293,7 @@ export interface Expense {
   category: ExpenseCategory;
   amount: number;
   paymentMethod: 'cash' | 'bkash' | 'nagad' | 'bank';
+  branch?: string;
   note?: string;
   date: string;
   createdAt: string;
@@ -305,7 +322,7 @@ export type ActiveTab =
   | 'settings';
 
 export type Language = 'bn' | 'en';
-export type Branch = 'BP-ISHWARGONJ' | 'BP-MYMENSINGH';
+export type Branch = string;
 
 // --- Enterprise Locker & Device Models ---
 export interface LocationPoint {
@@ -501,6 +518,7 @@ export interface StaffMember {
   role: 'Manager' | 'Sales Executive' | 'Technician' | 'Accountant';
   salary: number;
   salesCommissionPercent: number;
+  pin?: string;
   active: boolean;
   joinedDate: string;
 }

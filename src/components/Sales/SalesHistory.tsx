@@ -226,7 +226,7 @@ export const SalesHistory: React.FC = () => {
       </div>
 
       {/* Table list */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6 pb-24 sm:pb-6">
         {filteredSales.length === 0 ? (
           <div className="h-64 flex flex-col items-center justify-center text-slate-400">
             <FileText className="w-12 h-12 mb-2 stroke-1" />

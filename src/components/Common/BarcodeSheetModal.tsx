@@ -18,7 +18,9 @@ import {
   CheckSquare,
   Square,
   HelpCircle,
-  FileText
+  FileText,
+  RotateCw,
+  ExternalLink
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Product } from '../../types';
@@ -241,6 +243,26 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
   const [showCutGuide, setShowCutGuide] = useState<boolean>(true);
   const [monochromeCrisp, setMonochromeCrisp] = useState<boolean>(true);
 
+  // Print Orientation & Rotation Controls (Default: 'landscape' - আড়ে প্রিন্ট)
+  const [orientation, setOrientation] = useState<'landscape' | 'portrait'>(() => {
+    return (localStorage.getItem('phonesell_label_orientation') as any) || 'landscape';
+  });
+  const [rotation, setRotation] = useState<0 | 90 | 180 | 270>(() => {
+    const saved = localStorage.getItem('phonesell_label_rotation');
+    return saved ? (parseInt(saved) as any) : 0;
+  });
+  const [layoutMode, setLayoutMode] = useState<'horizontal' | 'compact'>('horizontal');
+
+  const handleSetOrientation = (newOri: 'landscape' | 'portrait') => {
+    setOrientation(newOri);
+    localStorage.setItem('phonesell_label_orientation', newOri);
+  };
+
+  const handleSetRotation = (newRot: 0 | 90 | 180 | 270) => {
+    setRotation(newRot);
+    localStorage.setItem('phonesell_label_rotation', newRot.toString());
+  };
+
   // Preview Zoom & Active Tab
   const [previewZoom, setPreviewZoom] = useState<number>(100);
   const [activeSettingsTab, setActiveSettingsTab] = useState<'presets' | 'products' | 'design' | 'printer'>('presets');
@@ -273,6 +295,42 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
     }
     return LABEL_PRESETS.find(p => p.id === selectedPresetId) || LABEL_PRESETS[0];
   }, [selectedPresetId, isCustomMode, customWidth, customHeight, customColumns, customGap]);
+
+  // Effective sticker dimensions based on chosen orientation:
+  // 'landscape' (আড়ে প্রিন্ট): চওড়া বেশি (width is wider than height)
+  // 'portrait' (লম্বায় প্রিন্ট): দৈর্ঘ্য বেশি (height is taller than width)
+  const isLandscape = orientation === 'landscape';
+
+  const stickerWidthMm = useMemo(() => {
+    if (activePreset.isThermalRoll) {
+      return isLandscape
+        ? Math.max(activePreset.widthMm, activePreset.heightMm)
+        : Math.min(activePreset.widthMm, activePreset.heightMm);
+    }
+    return activePreset.widthMm;
+  }, [activePreset, isLandscape]);
+
+  const stickerHeightMm = useMemo(() => {
+    if (activePreset.isThermalRoll) {
+      return isLandscape
+        ? Math.min(activePreset.widthMm, activePreset.heightMm)
+        : Math.max(activePreset.widthMm, activePreset.heightMm);
+    }
+    return activePreset.heightMm;
+  }, [activePreset, isLandscape]);
+
+  const isThermal = activePreset.isThermalRoll;
+  const isSingleRoll = isThermal && activePreset.columns === 1;
+
+  const printPageWidthMm = isSingleRoll
+    ? stickerWidthMm
+    : isThermal
+    ? (stickerWidthMm * activePreset.columns + (activePreset.gapMm * (activePreset.columns - 1)))
+    : 210;
+
+  const printPageHeightMm = isThermal
+    ? stickerHeightMm
+    : 297;
 
   // Total label count across all items in batch queue
   const totalStickersToPrint = useMemo(() => {
@@ -375,19 +433,6 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
       });
 
       // 3. Determine exact page and layout specifications
-      const isThermal = activePreset.isThermalRoll;
-      const isSingleRoll = isThermal && activePreset.columns === 1;
-
-      const pageWidth = isSingleRoll
-        ? `${activePreset.widthMm}mm`
-        : isThermal
-        ? `${activePreset.widthMm * activePreset.columns + (activePreset.gapMm * (activePreset.columns - 1))}mm`
-        : '210mm';
-
-      const pageHeight = isThermal
-        ? `${activePreset.heightMm}mm`
-        : '297mm';
-
       const pageMargin = isThermal ? '0mm' : '4mm';
 
       // 4. Create or reuse isolated printing iframe
@@ -399,7 +444,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
 
       iframe = document.createElement('iframe');
       iframe.id = iframeId;
-      iframe.setAttribute('style', 'position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;z-index:-9999;');
+      iframe.setAttribute('style', 'position:fixed;top:0;left:-9999px;width:1024px;height:768px;border:none;opacity:0.01;pointer-events:none;z-index:-9999;');
       document.body.appendChild(iframe);
 
       const frameDoc = iframe.contentWindow?.document;
@@ -422,7 +467,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
             ${headStyles}
             <style>
               @page {
-                size: ${pageWidth} ${pageHeight};
+                size: ${isThermal ? `${printPageWidthMm}mm ${printPageHeightMm}mm` : (isLandscape ? 'A4 landscape' : 'A4 portrait')};
                 margin: ${pageMargin};
               }
               *, *::before, *::after {
@@ -441,7 +486,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
               }
               .print-grid-container {
                 display: grid !important;
-                grid-template-columns: repeat(${activePreset.columns}, ${activePreset.widthMm}mm) !important;
+                grid-template-columns: repeat(${activePreset.columns}, ${stickerWidthMm}mm) !important;
                 gap: ${activePreset.gapMm}mm !important;
                 justify-content: ${activePreset.columns === 1 ? 'center' : 'start'} !important;
                 align-content: start !important;
@@ -450,8 +495,8 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
                 padding: 0 !important;
               }
               .barcode-sticker-cell {
-                width: ${activePreset.widthMm}mm !important;
-                height: ${activePreset.heightMm}mm !important;
+                width: ${stickerWidthMm}mm !important;
+                height: ${stickerHeightMm}mm !important;
                 box-sizing: border-box !important;
                 display: flex !important;
                 flex-direction: column !important;
@@ -466,6 +511,8 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
                 ${isSingleRoll ? 'page-break-after: always !important; break-after: page !important;' : ''}
                 border: ${showCutGuide ? '0.5px dashed #666666' : '0.5px solid transparent'} !important;
                 padding: ${activePreset.heightMm <= 25 ? '1mm 0.8mm' : '1.5mm 1mm'} !important;
+                transform: ${rotation !== 0 ? `rotate(${rotation}deg)` : 'none'} !important;
+                transform-origin: center center !important;
               }
               svg {
                 display: block !important;
@@ -520,10 +567,139 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
           console.warn('Iframe print error, falling back to window.print', e);
           window.print();
         }
-      }, 250);
+      }, 350);
     } catch (err) {
       console.error('Label print preparation error:', err);
       window.print();
+    }
+  };
+
+  // Direct Browser Tab Printing (Guaranteed 100% render without iframe restrictions)
+  const handleOpenPrintTab = () => {
+    try {
+      const liveGrid = document.getElementById('barcode-live-render-grid');
+      if (!liveGrid) {
+        handlePrint(false);
+        return;
+      }
+
+      const clonedGrid = liveGrid.cloneNode(true) as HTMLElement;
+      const originalCanvases = liveGrid.querySelectorAll('canvas');
+      const clonedCanvases = clonedGrid.querySelectorAll('canvas');
+      originalCanvases.forEach((orig, idx) => {
+        const cloned = clonedCanvases[idx];
+        if (cloned) {
+          try {
+            const img = document.createElement('img');
+            img.src = orig.toDataURL('image/png');
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.style.display = 'block';
+            cloned.parentNode?.replaceChild(img, cloned);
+          } catch (e) {}
+        }
+      });
+
+      const isThermal = activePreset.isThermalRoll;
+      const isSingleRoll = isThermal && activePreset.columns === 1;
+      const pageWidth = isSingleRoll
+        ? `${activePreset.widthMm}mm`
+        : isThermal
+        ? `${activePreset.widthMm * activePreset.columns + (activePreset.gapMm * (activePreset.columns - 1))}mm`
+        : '210mm';
+      const pageHeight = isThermal ? `${activePreset.heightMm}mm` : '297mm';
+      const pageMargin = isThermal ? '0mm' : '4mm';
+
+      const win = window.open('', '_blank');
+      if (!win) {
+        handlePrint(false);
+        return;
+      }
+
+      win.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>${settings.storeName} - Barcode Labels (${orientation})</title>
+            <style>
+              @page {
+                size: ${isThermal ? `${printPageWidthMm}mm ${printPageHeightMm}mm` : (isLandscape ? 'A4 landscape' : 'A4 portrait')};
+                margin: ${pageMargin};
+              }
+              *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hind Siliguri", sans-serif;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .print-grid-container {
+                display: grid !important;
+                grid-template-columns: repeat(${activePreset.columns}, ${stickerWidthMm}mm) !important;
+                gap: ${activePreset.gapMm}mm !important;
+                justify-content: ${activePreset.columns === 1 ? 'center' : 'start'} !important;
+                align-content: start !important;
+                width: 100% !important;
+              }
+              .barcode-sticker-cell {
+                width: ${stickerWidthMm}mm !important;
+                height: ${stickerHeightMm}mm !important;
+                box-sizing: border-box !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: space-between !important;
+                text-align: center !important;
+                overflow: hidden !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                ${isSingleRoll ? 'page-break-after: always !important; break-after: page !important;' : ''}
+                border: ${showCutGuide ? '0.5px dashed #666666' : '0.5px solid transparent'} !important;
+                padding: ${stickerHeightMm <= 25 ? '1mm 0.8mm' : '1.5mm 1mm'} !important;
+                transform: ${rotation !== 0 ? `rotate(${rotation}deg)` : 'none'} !important;
+                transform-origin: center center !important;
+              }
+              svg, img { display: block !important; margin: 0 auto !important; max-width: 100% !important; }
+              .flex { display: flex !important; }
+              .flex-col { flex-direction: column !important; }
+              .items-center { align-items: center !important; }
+              .justify-between { justify-content: space-between !important; }
+              .justify-center { justify-content: center !important; }
+              .text-center { text-align: center !important; }
+              .text-left { text-align: left !important; }
+              .text-right { text-align: right !important; }
+              .w-full { width: 100% !important; }
+              .truncate { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+              .font-bold { font-weight: 700 !important; }
+              .font-black { font-weight: 900 !important; }
+              .font-mono { font-family: monospace !important; }
+              .uppercase { text-transform: uppercase !important; }
+              .border-t { border-top: 0.5px solid #000000 !important; }
+              .leading-tight { line-height: 1.15 !important; }
+            </style>
+          </head>
+          <body>
+            <div class="print-grid-container">
+              ${clonedGrid.innerHTML}
+            </div>
+            <script>
+              window.onload = function() {
+                setTimeout(function() { window.print(); }, 250);
+              };
+            </script>
+          </body>
+        </html>
+      `);
+      win.document.close();
+    } catch (e) {
+      console.warn('Open print tab notice:', e);
+      handlePrint(false);
     }
   };
 
@@ -541,12 +717,8 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
           @page {
-            size: ${activePreset.isThermalRoll && activePreset.columns === 1 
-              ? `${activePreset.widthMm}mm ${activePreset.heightMm}mm` 
-              : activePreset.isThermalRoll 
-              ? `${activePreset.widthMm * activePreset.columns + (activePreset.gapMm * (activePreset.columns - 1))}mm ${activePreset.heightMm}mm`
-              : 'A4 portrait'};
-            margin: ${activePreset.isThermalRoll ? '0mm' : '4mm'};
+            size: ${isThermal ? `${printPageWidthMm}mm ${printPageHeightMm}mm` : (isLandscape ? 'A4 landscape' : 'A4 portrait')};
+            margin: ${isThermal ? '0mm' : '4mm'};
           }
           html, body {
             margin: 0 !important;
@@ -596,6 +768,8 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
             border-color: ${showCutGuide ? '#666666' : 'transparent'} !important;
             box-shadow: none !important;
             visibility: visible !important;
+            transform: ${rotation !== 0 ? `rotate(${rotation}deg)` : 'none'} !important;
+            transform-origin: center center !important;
           }
         }
       `}} />
@@ -830,6 +1004,61 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  {/* Print Orientation & Rotation Controls (User Request: আড়ে প্রিন্ট) */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3">
+                    <span className="font-bold text-slate-800 block text-xs">
+                      ৩. প্রিন্ট ওরিয়েন্টেশন ও স্টিকার ঘোরানো:
+                    </span>
+                    
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSetOrientation('landscape')}
+                        className={`p-2 rounded-xl border text-center transition font-bold text-xs ${
+                          orientation === 'landscape'
+                            ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-600'
+                            : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        <span className="block">🔄 আড়ে প্রিন্ট (Landscape)</span>
+                        <span className="block text-[9px] text-slate-500 font-normal mt-0.5">চওড়া / আড়াআড়ি (ডিফল্ট)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSetOrientation('portrait')}
+                        className={`p-2 rounded-xl border text-center transition font-bold text-xs ${
+                          orientation === 'portrait'
+                            ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-600'
+                            : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                        }`}
+                      >
+                        <span className="block">↕️ লম্বায় প্রিন্ট (Portrait)</span>
+                        <span className="block text-[9px] text-slate-500 font-normal mt-0.5">দৈর্ঘ্য বরাবর</span>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center justify-between border-t border-slate-200/60 pt-2 text-xs">
+                      <span className="font-semibold text-slate-700">স্টিকার রোটেশন (ঘোরানো):</span>
+                      <div className="flex gap-1 bg-white p-0.5 border border-slate-200 rounded-lg">
+                        {[0, 90, 180, 270].map(deg => (
+                          <button
+                            key={deg}
+                            type="button"
+                            onClick={() => handleSetRotation(deg as any)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition ${
+                              rotation === deg
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            {deg}°
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Cut Guide Borders & Print Sharpness Toggle */}
@@ -1168,7 +1397,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
             {/* Bottom Actions for Left Panel */}
             <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
               <span className="text-[11px] text-slate-600">
-                সাইজ: <strong className="font-mono text-slate-900">{activePreset.widthMm}×{activePreset.heightMm}mm</strong>
+                সাইজ: <strong className="font-mono text-slate-900">{stickerWidthMm}×{stickerHeightMm}mm</strong> ({orientation === 'landscape' ? 'আড়ে' : 'লম্বায়'})
               </span>
               <button
                 onClick={() => handlePrint(false)}
@@ -1184,15 +1413,43 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
           <div className="flex-1 flex flex-col overflow-hidden bg-slate-200/60">
             
             {/* Preview Toolbar */}
-            <div className="px-4 py-2.5 bg-white border-b border-slate-200 flex items-center justify-between text-xs shrink-0">
+            <div className="px-4 py-2.5 bg-white border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
               <div className="flex items-center gap-3">
                 <span className="font-bold text-slate-800 flex items-center gap-1.5">
                   <FileText className="w-4 h-4 text-indigo-600" />
                   লাইভ প্রিন্ট প্রিভিউ:
                 </span>
                 <span className="text-[11px] text-slate-500 font-mono">
-                  {flattenedStickers.length} টি স্টিকার তৈরি হয়েছে
+                  {flattenedStickers.length} টি স্টিকার
                 </span>
+              </div>
+
+              {/* Quick Print Orientation Switcher directly on Preview toolbar */}
+              <div className="flex items-center gap-1.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => handleSetOrientation('landscape')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 transition ${
+                    orientation === 'landscape'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                  title="আড়ে প্রিন্ট (Landscape - চওড়া/আড়াআড়ি)"
+                >
+                  <span>🔄 আড়ে প্রিন্ট (Landscape)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetOrientation('portrait')}
+                  className={`px-2.5 py-1 rounded-md text-[11px] font-bold flex items-center gap-1 transition ${
+                    orientation === 'portrait'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-slate-700 hover:text-slate-900'
+                  }`}
+                  title="লম্বায় প্রিন্ট (Portrait - খাড়া/দৈর্ঘ্য)"
+                >
+                  <span>↕️ লম্বায় প্রিন্ট (Portrait)</span>
+                </button>
               </div>
 
               {/* Zoom Buttons */}
@@ -1224,9 +1481,9 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
                 style={{
                   transform: `scale(${previewZoom / 100})`,
                   width: activePreset.isThermalRoll && activePreset.columns === 1 
-                    ? `${activePreset.widthMm * 3.78 + 32}px` 
+                    ? `${stickerWidthMm * 3.78 + 32}px` 
                     : activePreset.isThermalRoll 
-                    ? `${(activePreset.widthMm * activePreset.columns + (activePreset.gapMm * (activePreset.columns - 1))) * 3.78 + 32}px` 
+                    ? `${(stickerWidthMm * activePreset.columns + (activePreset.gapMm * (activePreset.columns - 1))) * 3.78 + 32}px` 
                     : '210mm',
                   minHeight: activePreset.isThermalRoll ? 'auto' : '297mm',
                   boxSizing: 'border-box'
@@ -1251,16 +1508,16 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
                           showCutGuide ? 'border border-dashed border-slate-300' : 'border border-transparent'
                         } ${monochromeCrisp ? 'filter contrast-125' : ''}`}
                         style={{
-                          width: `${activePreset.widthMm}mm`,
-                          height: `${activePreset.heightMm}mm`,
-                          padding: activePreset.heightMm <= 25 ? '1.5mm 1mm' : '2mm 1.5mm',
+                          width: `${stickerWidthMm}mm`,
+                          height: `${stickerHeightMm}mm`,
+                          padding: stickerHeightMm <= 25 ? '1mm 0.8mm' : '1.5mm 1mm',
                           boxSizing: 'border-box'
                         }}
                       >
                         {/* 1. Store Header */}
                         {showStoreName && (
                           <div className="w-full truncate leading-tight shrink-0">
-                            <span className="font-black text-slate-900 uppercase tracking-tighter" style={{ fontSize: activePreset.heightMm <= 25 ? '7.5px' : '9px' }}>
+                            <span className="font-black text-slate-900 uppercase tracking-tighter" style={{ fontSize: stickerHeightMm <= 25 ? '7.5px' : '9px' }}>
                               {storeHeader}
                             </span>
                           </div>
@@ -1286,7 +1543,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
                             format={barcodeFormat}
                             width={barcodeBarWidth}
                             height={barcodeHeight}
-                            fontSize={activePreset.heightMm <= 25 ? 8 : 9}
+                            fontSize={stickerHeightMm <= 25 ? 8 : 9}
                             displayValue={showBarcodeText && barcodeFormat !== 'QR'}
                             noBorder={true}
                             margin={0}
@@ -1315,7 +1572,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
                           {/* Right: Selling Price */}
                           {showPrice && (
                             <div className="text-right shrink-0">
-                              <span className="font-black font-mono text-slate-950" style={{ fontSize: activePreset.heightMm <= 25 ? '9px' : '11px' }}>
+                              <span className="font-black font-mono text-slate-950" style={{ fontSize: stickerHeightMm <= 25 ? '9px' : '11px' }}>
                                 {pricePrefix === 'mrp' ? 'MRP ' : ''}{formatCurrency(p.sellingPrice)}
                               </span>
                             </div>
@@ -1336,7 +1593,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => handlePrint(false)}
-                  className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-100 transition"
+                  className="flex items-center gap-1.5 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-100 transition cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />
                   <span>{t('এখনই প্রিন্ট করুন', 'Print Now')}</span>
@@ -1364,16 +1621,16 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
                     showCutGuide ? 'border border-dashed border-slate-400' : 'border border-transparent'
                   }`}
                   style={{
-                    width: `${activePreset.widthMm}mm`,
-                    height: `${activePreset.heightMm}mm`,
-                    padding: activePreset.heightMm <= 25 ? '1mm 0.8mm' : '1.5mm 1mm',
+                    width: `${stickerWidthMm}mm`,
+                    height: `${stickerHeightMm}mm`,
+                    padding: stickerHeightMm <= 25 ? '1mm 0.8mm' : '1.5mm 1mm',
                     boxSizing: 'border-box'
                   }}
                 >
                   {/* Store Name */}
                   {showStoreName && (
                     <div className="w-full truncate leading-tight shrink-0">
-                      <span className="font-black text-black uppercase tracking-tighter" style={{ fontSize: activePreset.heightMm <= 25 ? '7.5px' : '9px' }}>
+                      <span className="font-black text-black uppercase tracking-tighter" style={{ fontSize: stickerHeightMm <= 25 ? '7.5px' : '9px' }}>
                         {storeHeader}
                       </span>
                     </div>
@@ -1399,7 +1656,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
                       format={barcodeFormat}
                       width={barcodeBarWidth}
                       height={barcodeHeight}
-                      fontSize={activePreset.heightMm <= 25 ? 8 : 9}
+                      fontSize={stickerHeightMm <= 25 ? 8 : 9}
                       displayValue={showBarcodeText && barcodeFormat !== 'QR'}
                       noBorder={true}
                       margin={0}
@@ -1422,7 +1679,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
 
                     {showPrice && (
                       <div className="text-right shrink-0">
-                        <span className="font-black font-mono text-black" style={{ fontSize: activePreset.heightMm <= 25 ? '9px' : '11px' }}>
+                        <span className="font-black font-mono text-black" style={{ fontSize: stickerHeightMm <= 25 ? '9px' : '11px' }}>
                           {pricePrefix === 'mrp' ? 'MRP ' : ''}{formatCurrency(p.sellingPrice)}
                         </span>
                       </div>

@@ -264,7 +264,7 @@ export const WarrantyReturns: React.FC = () => {
       </div>
 
       {/* Claims List */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6 pb-24 sm:pb-6">
         <h3 className="text-sm font-bold text-slate-800 mb-3 uppercase tracking-wider">
           {t('ওয়ারেন্টি ক্লেইম ও প্রোডাক্ট রিটার্ন তালিকা', 'Active Warranty Claims & Returns Log')} ({returns.length})
         </h3>

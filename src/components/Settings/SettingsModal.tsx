@@ -14,7 +14,12 @@ import {
   Save,
   LogIn,
   LogOut,
-  UserCheck
+  UserCheck,
+  Building2,
+  Printer,
+  Plus,
+  Trash2,
+  MessageSquare
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -22,6 +27,9 @@ export const SettingsModal: React.FC = () => {
   const { 
     settings, 
     updateSettings, 
+    branches,
+    addBranch,
+    deleteBranch,
     isOnline, 
     isSyncing, 
     pendingSyncCount, 
@@ -42,9 +50,18 @@ export const SettingsModal: React.FC = () => {
   const [vatPercent, setVatPercent] = useState(settings.vatPercent);
   const [currencySymbol, setCurrencySymbol] = useState(settings.currencySymbol);
   const [invoiceFooter, setInvoiceFooter] = useState(settings.invoiceFooter);
+  const [defaultLabelOrientation, setDefaultLabelOrientation] = useState<'landscape' | 'portrait'>(settings.defaultLabelOrientation || 'landscape');
+  const [smsGatewayApiKey, setSmsGatewayApiKey] = useState(settings.smsGatewayApiKey || '');
+  const [smsGatewaySenderId, setSmsGatewaySenderId] = useState(settings.smsGatewaySenderId || '');
   const [isSavedAlert, setIsSavedAlert] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Add Branch Form State
+  const [showAddBranchModal, setShowAddBranchModal] = useState(false);
+  const [newBranchName, setNewBranchName] = useState('');
+  const [newBranchId, setNewBranchId] = useState('');
+  const [newBranchAddress, setNewBranchAddress] = useState('');
+  const [newBranchPhone, setNewBranchPhone] = useState('');
 
   const handleSaveSettings = (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,11 +71,32 @@ export const SettingsModal: React.FC = () => {
       address: address.trim(),
       vatPercent,
       currencySymbol: currencySymbol.trim(),
-      invoiceFooter: invoiceFooter.trim()
+      invoiceFooter: invoiceFooter.trim(),
+      defaultLabelOrientation,
+      smsGatewayApiKey: smsGatewayApiKey.trim(),
+      smsGatewaySenderId: smsGatewaySenderId.trim()
     });
 
     setIsSavedAlert(true);
     setTimeout(() => setIsSavedAlert(false), 2500);
+  };
+
+  const handleCreateBranch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBranchName || !newBranchId) return;
+
+    addBranch({
+      id: newBranchId.trim().toUpperCase(),
+      name: newBranchName.trim(),
+      address: newBranchAddress.trim() || undefined,
+      phone: newBranchPhone.trim() || undefined
+    });
+
+    setNewBranchName('');
+    setNewBranchId('');
+    setNewBranchAddress('');
+    setNewBranchPhone('');
+    setShowAddBranchModal(false);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -188,6 +226,74 @@ export const SettingsModal: React.FC = () => {
               ></textarea>
             </div>
 
+            {/* Barcode & Label Print Orientation */}
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+              <label className="block text-xs font-bold text-slate-700 uppercase">
+                <span className="flex items-center gap-1.5">
+                  <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                  {t('বারকোড লেবেল ডিফল্ট ওরিয়েন্টেশন', 'Default Barcode Label Orientation')}
+                </span>
+              </label>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setDefaultLabelOrientation('landscape')}
+                  className={`p-2.5 rounded-xl border text-left transition font-semibold ${
+                    defaultLabelOrientation === 'landscape'
+                      ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-600'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  <span className="block font-bold">🔄 আড়ে প্রিন্ট (Landscape / প্রস্থ বরাবর)</span>
+                  <span className="block text-[10px] text-slate-500 font-normal mt-0.5">থার্মাল রোল ও চওড়া স্টিকারের জন্য সেরা</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDefaultLabelOrientation('portrait')}
+                  className={`p-2.5 rounded-xl border text-left transition font-semibold ${
+                    defaultLabelOrientation === 'portrait'
+                      ? 'border-indigo-600 bg-indigo-50 text-indigo-900 ring-1 ring-indigo-600'
+                      : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700'
+                  }`}
+                >
+                  <span className="block font-bold">↕️ লম্বায় প্রিন্ট (Portrait / দৈর্ঘ্য বরাবর)</span>
+                  <span className="block text-[10px] text-slate-500 font-normal mt-0.5">লম্বালম্বি স্টিকার ও সাধারণ এ৪ পেপারের জন্য</span>
+                </button>
+              </div>
+            </div>
+
+            {/* SMS Gateway Config */}
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+              <label className="block text-xs font-bold text-slate-700 uppercase">
+                <span className="flex items-center gap-1.5">
+                  <MessageSquare className="w-3.5 h-3.5 text-indigo-600" />
+                  {t('এসএমএস গেটওয়ে কনফিগারেশন (ঐচ্ছিক)', 'SMS Gateway Configuration (Optional)')}
+                </span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <span className="text-[10px] text-slate-500 font-semibold block mb-0.5">API Key (যেমন: Greenweb / BulksmsBD):</span>
+                  <input
+                    type="password"
+                    placeholder="e.g. 94924823904..."
+                    value={smsGatewayApiKey}
+                    onChange={(e) => setSmsGatewayApiKey(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 font-semibold block mb-0.5">Sender ID / Masking:</span>
+                  <input
+                    type="text"
+                    placeholder="e.g. 8809612..."
+                    value={smsGatewaySenderId}
+                    onChange={(e) => setSmsGatewaySenderId(e.target.value)}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-mono text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div className="pt-2">
               <button
                 type="submit"
@@ -198,6 +304,65 @@ export const SettingsModal: React.FC = () => {
               </button>
             </div>
           </form>
+
+          {/* Multi-Branch Management Section */}
+          <div className="mt-8 pt-6 border-t border-slate-200">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-indigo-600" />
+                  <span>{t('মাল্টি-ব্রাঞ্চ ও শোরুম ব্যবস্থাপনা', 'Multi-Branch & Showroom Management')}</span>
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {t('আপনার সকল শোরুম ও আউটলেট পরিচালনা করুন। নতুন ব্রাঞ্চ যোগ করলে হেডার ও পিওএস এ চলে আসবে।', 'Manage all store outlets. New branches automatically appear across POS and ERP.')}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAddBranchModal(true)}
+                className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl text-xs flex items-center gap-1.5 transition"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t('নতুন ব্রাঞ্চ যোগ করুন', 'Add Branch')}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {branches.map(b => (
+                <div key={b.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/60 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 text-xs truncate">{b.name}</span>
+                      {b.isDefault && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-indigo-100 text-indigo-800 shrink-0">
+                          ডিফল্ট
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-mono text-[10px] text-slate-500 block mt-0.5">ID: {b.id}</span>
+                    {b.address && <span className="text-[11px] text-slate-600 block mt-1 truncate">{b.address}</span>}
+                    {b.phone && <span className="font-mono text-[10px] text-slate-500 block mt-0.5">📞 {b.phone}</span>}
+                  </div>
+
+                  {!b.isDefault && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm(`আপনি কি "${b.name}" ব্রাঞ্চ মুছে ফেলতে চান?`)) {
+                          deleteBranch(b.id);
+                        }
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition shrink-0"
+                      title="ব্রাঞ্চ মুছে ফেলুন"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Right: Cloud Sync, Backup & Restore */}
@@ -360,6 +525,97 @@ export const SettingsModal: React.FC = () => {
         </div>
 
       </div>
+
+      {/* Add New Branch Modal */}
+      {showAddBranchModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in">
+          <form onSubmit={handleCreateBranch} className="bg-white rounded-2xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-center justify-between border-b pb-2">
+              <span className="font-extrabold text-sm text-slate-900 flex items-center gap-1.5">
+                <Building2 className="w-4 h-4 text-indigo-600" />
+                <span>{t('নতুন ব্রাঞ্চ বা শোরুম যোগ করুন', 'Add New Branch')}</span>
+              </span>
+              <button 
+                type="button" 
+                onClick={() => setShowAddBranchModal(false)} 
+                className="text-slate-400 hover:text-slate-600 text-lg leading-none cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                {t('ব্রাঞ্চের নাম *', 'Branch Name *')}
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="যেমন: ঈশ্বরগঞ্জ ব্রাঞ্চ"
+                value={newBranchName}
+                onChange={e => setNewBranchName(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                {t('ব্রাঞ্চ কোড / আইডি (ইউনিক) *', 'Branch Code / ID *')}
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="যেমন: BP-ISHWARGONJ"
+                value={newBranchId}
+                onChange={e => setNewBranchId(e.target.value.toUpperCase())}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono uppercase font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                {t('শোরুমের ঠিকানা', 'Address')}
+              </label>
+              <input
+                type="text"
+                placeholder="যেমন: ঈশ্বরগঞ্জ বাজার, ময়মনসিংহ"
+                value={newBranchAddress}
+                onChange={e => setNewBranchAddress(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                {t('যোগাযোগের ফোন নম্বর', 'Contact Phone')}
+              </label>
+              <input
+                type="text"
+                placeholder="017XXXXXXXX"
+                value={newBranchPhone}
+                onChange={e => setNewBranchPhone(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddBranchModal(false)}
+                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
+              >
+                {t('বাতিল', 'Cancel')}
+              </button>
+              <button
+                type="submit"
+                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs"
+              >
+                {t('ব্রাঞ্চ সেভ করুন', 'Save Branch')}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
     </div>
   );
