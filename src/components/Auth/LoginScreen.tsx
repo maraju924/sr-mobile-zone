@@ -49,7 +49,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     try {
       const fbUser = await loginWithGoogle();
-      if (fbUser && fbUser.email) {
+      if (!fbUser) {
+        // User closed or dismissed the popup
+        return;
+      }
+      if (fbUser.email) {
         const authU: AuthUser = {
           id: fbUser.uid,
           name: fbUser.displayName || fbUser.email.split('@')[0],
@@ -63,20 +67,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           lastLogin: new Date().toISOString()
         };
         onLoginSuccess(authU);
-      } else {
-        throw new Error('Google authentication returned no user');
       }
     } catch (err: any) {
-      console.error('Google Sign-In Error:', err);
-      if (err?.code === 'auth/popup-closed-by-user') {
-        setError(lang === 'bn' ? 'লগইন উইন্ডো বন্ধ করা হয়েছে।' : 'Login popup was closed.');
-      } else {
-        setError(
-          lang === 'bn' 
-            ? 'গুগল সাইন-ইন ব্যর্থ হয়েছে। ইন্টারনেট সংযোগ চেক করুন অথবা ইমেইল ও পাসওয়ার্ড ট্যাব ব্যবহার করুন।' 
-            : 'Google Sign-In failed. Please check your connection or use Email & Password.'
-        );
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        return;
       }
+      setError(
+        lang === 'bn' 
+          ? 'গুগল সাইন-ইন ব্যর্থ হয়েছে। ইন্টারনেট সংযোগ চেক করুন অথবা ইমেইল ও পাসওয়ার্ড দিয়ে সাইন ইন করুন।' 
+          : 'Google Sign-In failed. Please check your connection or use Email & Password.'
+      );
     } finally {
       setIsLoading(false);
     }

@@ -290,7 +290,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [smsLogs, setSmsLogs] = useState<SMSLog[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [favourites, setFavourites] = useState<string[]>(() => loadFromLocal(STORAGE_KEYS.FAVOURITES, ['devices', 'pos', 'installments', 'usedbuy', 'livewall']));
-  const [deviceCredits, setDeviceCredits] = useState<number>(24);
+  const [deviceCredits, setDeviceCredits] = useState<number>(0);
   const [parkedCarts, setParkedCarts] = useState<ParkedCart[]>([]);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -356,14 +356,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           const remoteSettings = await loadSettingsFromFirestore(uid);
           if (remoteSettings && remoteSettings.storeName) {
             setSettings(remoteSettings);
+            setDeviceCredits(remoteSettings.deviceCredits ?? 0);
           } else {
             const initSettings: StoreSettings = {
               ...DEFAULT_SETTINGS,
               ownerId: uid,
-              storeName: 'PhoneSell PRO ডিজিটাল শপ'
+              storeName: 'PhoneSell PRO ডিজিটাল শপ',
+              deviceCredits: 0
             };
             setSettings(initSettings);
             saveSettingsToFirestore(initSettings, uid);
+            setDeviceCredits(0);
           }
         } catch (err) {
           console.warn('Initial settings load warning:', err);
@@ -407,6 +410,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setChatMessages([]);
         setSettings(DEFAULT_SETTINGS);
         setCart([]);
+        setDeviceCredits(0);
       }
     });
 
@@ -1495,13 +1499,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setChatMessages([]);
     setSettings(DEFAULT_SETTINGS);
     setCart([]);
+    setDeviceCredits(0);
   };
 
   // Google sign in with pure Firebase Auth
   const loginGoogle = async () => {
     try {
       const fbUser = await loginWithGoogle();
-      if (fbUser && fbUser.email) {
+      if (!fbUser) return;
+      if (fbUser.email) {
         const authU: AuthUser = {
           id: fbUser.uid,
           name: fbUser.displayName || fbUser.email.split('@')[0],
@@ -1517,8 +1523,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         authLogin(authU);
       }
     } catch (err: any) {
-      console.error('Google login error:', err);
-      throw err;
+      if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
+        return;
+      }
+      console.warn('Google login dismissed or failed:', err?.message || err);
     }
   };
 
@@ -1594,7 +1602,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
     setDevices(prev => [newDevice, ...prev]);
     if (ownerId) saveDocToFirestore('devices', newDevice, ownerId);
-    setDeviceCredits(c => Math.max(0, c - 1));
+    setDeviceCredits(c => {
+      const next = Math.max(0, c - 1);
+      if (ownerId) saveSettingsToFirestore({ ...settings, deviceCredits: next }, ownerId);
+      return next;
+    });
     return newDevice;
   };
 
@@ -1683,7 +1695,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const addDeviceCredits = (count: number) => {
-    setDeviceCredits(c => c + count);
+    const ownerId = user?.uid || currentUser?.id || '';
+    setDeviceCredits(c => {
+      const next = c + count;
+      if (ownerId) saveSettingsToFirestore({ ...settings, deviceCredits: next }, ownerId);
+      return next;
+    });
   };
 
   // Used Buy (পুরনো ফোন কেনা) - Direct Firebase Firestore Persistence

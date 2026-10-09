@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Radio, 
@@ -24,6 +24,7 @@ export const LiveWall: React.FC = () => {
   const { 
     devices, 
     installments, 
+    sales,
     formatCurrency, 
     branch, 
     setActiveTab 
@@ -61,33 +62,116 @@ export const LiveWall: React.FC = () => {
     }
   };
 
-  // Simulated 14-day collections data
-  const collections14Days = [
-    { day: '17 Sep', val: 12000 },
-    { day: '18 Sep', val: 18500 },
-    { day: '19 Sep', val: 14000 },
-    { day: '20 Sep', val: 24000 },
-    { day: '21 Sep', val: 16000 },
-    { day: '22 Sep', val: 32000 },
-    { day: '23 Sep', val: 28000 },
-    { day: '24 Sep', val: 21000 },
-    { day: '25 Sep', val: 39000 },
-    { day: '26 Sep', val: 26000 },
-    { day: '27 Sep', val: 34000 },
-    { day: '28 Sep', val: 42000 },
-    { day: '29 Sep', val: 31000 },
-    { day: '30 Sep', val: 48500 }
-  ];
-  const maxCollection = Math.max(...collections14Days.map(c => c.val));
+  // Real today's collections from live sales and installments
+  const todayStr = new Date().toISOString().split('T')[0];
+  const collectedToday = useMemo(() => {
+    let sum = 0;
+    (sales || []).forEach(s => {
+      if (s.createdAt && s.createdAt.startsWith(todayStr)) {
+        sum += s.paidAmount || 0;
+      }
+    });
+    (installments || []).forEach(inst => {
+      (inst.schedule || []).forEach(sch => {
+        if (sch.paidDate && sch.paidDate.startsWith(todayStr)) {
+          sum += sch.paidAmount || sch.amount || 0;
+        }
+      });
+    });
+    return sum;
+  }, [sales, installments, todayStr]);
 
-  // Live Activity Stream
-  const activityLogs = [
-    { id: '1', time: '10:32 AM', event: 'LOCATION_SYNC', text: 'Galaxy A15 reported fresh GPS position (±12m)', status: 'normal' },
-    { id: '2', time: '10:28 AM', event: 'CASH_PAYMENT', text: 'Installment #3 collected ৳ 3,500 (Rofiqul Islam)', status: 'success' },
-    { id: '3', time: '10:15 AM', event: 'SIM_CHANGED', text: 'CRITICAL: Redmi Note 13 detected SIM swap', status: 'critical' },
-    { id: '4', time: '09:40 AM', event: 'AUTO_LOCK', text: 'Device locked: 5 days overdue grace period expired', status: 'warning' },
-    { id: '5', time: '09:10 AM', event: 'DEVICE_ONLINE', text: 'Realme 12x reconnected via Wi-Fi network', status: 'normal' }
-  ];
+  const todayReceiptsCount = useMemo(() => {
+    let count = 0;
+    (sales || []).forEach(s => {
+      if (s.createdAt && s.createdAt.startsWith(todayStr)) count++;
+    });
+    (installments || []).forEach(inst => {
+      (inst.schedule || []).forEach(sch => {
+        if (sch.paidDate && sch.paidDate.startsWith(todayStr)) count++;
+      });
+    });
+    return count;
+  }, [sales, installments, todayStr]);
+
+  // Real total outstanding balance
+  const totalOutstanding = useMemo(() => {
+    const instDue = (installments || []).reduce((acc, i) => acc + (i && i.status === 'completed' ? 0 : (i?.remainingBalance || 0)), 0);
+    const salesDue = (sales || []).reduce((acc, s) => acc + (s.dueAmount || 0), 0);
+    return instDue + salesDue;
+  }, [installments, sales]);
+
+  // Real 14-day collections data from live installments & sales
+  const collections14Days = useMemo(() => {
+    const list: { day: string; val: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dayStr = d.toISOString().split('T')[0];
+      const dayLabel = d.toLocaleDateString('en-US', { day: '2-digit', month: 'short' });
+      
+      let dayVal = 0;
+      (sales || []).forEach(s => {
+        if (s.createdAt && s.createdAt.startsWith(dayStr)) {
+          dayVal += s.paidAmount || 0;
+        }
+      });
+      (installments || []).forEach(inst => {
+        (inst.schedule || []).forEach(sch => {
+          if (sch.paidDate && sch.paidDate.startsWith(dayStr)) {
+            dayVal += sch.paidAmount || sch.amount || 0;
+          }
+        });
+      });
+      list.push({ day: dayLabel, val: dayVal });
+    }
+    return list;
+  }, [sales, installments]);
+
+  const total14Days = useMemo(() => collections14Days.reduce((sum, c) => sum + c.val, 0), [collections14Days]);
+  const maxCollection = Math.max(...collections14Days.map(c => c.val), 1);
+
+  // Live Activity Stream from real devices and installment payments
+  const activityLogs = useMemo(() => {
+    const logs: { id: string; time: string; event: string; text: string; status: 'normal' | 'success' | 'warning' | 'critical' }[] = [];
+    
+    devices.forEach(dev => {
+      (dev.commandHistory || []).forEach(cmd => {
+        logs.push({
+          id: cmd.id || `cmd_${Math.random()}`,
+          time: cmd.timestamp || 'Recent',
+          event: cmd.command || 'DEVICE_COMMAND',
+          text: `${dev.model} (${dev.customerName}): ${cmd.reason || cmd.command}`,
+          status: (cmd.command || '').includes('LOCK') ? 'warning' : 'normal'
+        });
+      });
+      (dev.securityEvents || []).forEach(sec => {
+        logs.push({
+          id: sec.id || `sec_${Math.random()}`,
+          time: sec.timestamp || 'Recent',
+          event: sec.type || 'SECURITY_EVENT',
+          text: `${dev.model}: ${sec.details || sec.type}`,
+          status: sec.severity === 'CRITICAL' ? 'critical' : 'warning'
+        });
+      });
+    });
+
+    installments.forEach(inst => {
+      (inst.schedule || []).forEach(sch => {
+        if (sch.isPaid && sch.paidDate) {
+          logs.push({
+            id: `pay_${sch.id}`,
+            time: new Date(sch.paidDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+            event: 'PAYMENT_COLLECTED',
+            text: `Installment #${sch.installmentNo} collected ${formatCurrency(sch.paidAmount || sch.amount)} (${inst.customerName})`,
+            status: 'success'
+          });
+        }
+      });
+    });
+
+    return logs.slice(0, 8);
+  }, [devices, installments, formatCurrency]);
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-950 text-slate-100 p-3 sm:p-5 flex flex-col space-y-4 font-mono select-none">

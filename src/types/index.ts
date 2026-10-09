@@ -172,6 +172,7 @@ export interface StoreSettings {
   vatPercent: number;
   currencySymbol: string;
   invoiceFooter: string;
+  deviceCredits?: number;
 }
 
 export interface NotificationItem {

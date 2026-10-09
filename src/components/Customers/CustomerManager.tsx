@@ -34,6 +34,7 @@ export const CustomerManager: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [kycFilter, setKycFilter] = useState<'all' | 'verified' | 'pending'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [selectedCustomerDetail, setSelectedCustomerDetail] = useState<any | null>(null);
 
   // Form State
   const [name, setName] = useState('');
@@ -329,7 +330,7 @@ export const CustomerManager: React.FC = () => {
 
                     <td className="py-3 px-4 text-right">
                       <button
-                        onClick={() => alert(`Customer Profile: ${cust.name}\nPhone: ${cust.phone}\nNID: ${cust.nidNumber || 'N/A'}\nDue: ৳${cust.outstanding}`)}
+                        onClick={() => setSelectedCustomerDetail(cust)}
                         className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
                       >
                         View Details
@@ -522,6 +523,98 @@ export const CustomerManager: React.FC = () => {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* CUSTOMER DETAILS MODAL */}
+      {selectedCustomerDetail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-3 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 border border-slate-200 shadow-2xl space-y-4 text-xs">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-indigo-600" />
+                <span className="font-extrabold text-base text-slate-900">Customer Profile & Financial Ledger</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setSelectedCustomerDetail(null)} 
+                className="text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <div className="font-extrabold text-slate-900 text-sm">{selectedCustomerDetail.name}</div>
+                  <div className="text-[11px] font-mono text-slate-500">{selectedCustomerDetail.phone}</div>
+                </div>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase font-mono ${
+                  selectedCustomerDetail.riskRating === 'low' ? 'bg-emerald-100 text-emerald-800' :
+                  selectedCustomerDetail.riskRating === 'medium' ? 'bg-amber-100 text-amber-800' :
+                  'bg-rose-100 text-rose-800'
+                }`}>
+                  Risk: {selectedCustomerDetail.riskRating}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Total Purchases</div>
+                  <div className="text-base font-black font-mono text-slate-900 mt-1">
+                    {formatCurrency(selectedCustomerDetail.totalPurchases)}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Total Paid</div>
+                  <div className="text-base font-black font-mono text-emerald-600 mt-1">
+                    {formatCurrency(selectedCustomerDetail.totalPaid)}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Outstanding Balance</div>
+                  <div className="text-base font-black font-mono text-rose-600 mt-1">
+                    {formatCurrency(selectedCustomerDetail.outstanding)}
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Credit Limit</div>
+                  <div className="text-base font-black font-mono text-indigo-600 mt-1">
+                    {formatCurrency(selectedCustomerDetail.creditLimit || 0)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 font-mono">
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-sans">NID Card:</span>
+                  <span className="font-bold text-slate-800">{selectedCustomerDetail.nidNumber || 'Not submitted'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-sans">Address:</span>
+                  <span className="font-semibold text-slate-800 font-sans">{selectedCustomerDetail.address || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-sans">Financed Devices:</span>
+                  <span className="font-bold text-slate-800">{selectedCustomerDetail.financedCount} Unit(s)</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedCustomerDetail(null)}
+                className="px-4 py-2 bg-slate-900 text-white font-bold rounded-xl text-xs hover:bg-slate-800 cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

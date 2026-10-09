@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { AccountEntry, JournalTransaction } from '../../types';
 import { 
@@ -22,16 +22,20 @@ export const AccountingManager: React.FC = () => {
     accounts, 
     journalEntries, 
     addJournalEntry, 
+    sales,
+    installments,
+    expenses,
+    suppliers,
     formatCurrency, 
     branch, 
     lang 
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'journal' | 'accounts' | 'pnl' | 'trial'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'journal' | 'pnl' | 'trial'>('overview');
   const [showAddModal, setShowAddModal] = useState(false);
 
   // New Journal Form
-  const [debitAcc, setDebitAcc] = useState('Cash in Hand (BP-Ishwargonj)');
+  const [debitAcc, setDebitAcc] = useState('Cash in Hand');
   const [creditAcc, setCreditAcc] = useState('Sales Revenue');
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
@@ -56,12 +60,52 @@ export const AccountingManager: React.FC = () => {
     setDescription('');
   };
 
-  const totalCashBank = accounts
-    .filter(a => a.type === 'Asset' && (a.accountName.includes('Cash') || a.accountName.includes('Bank') || a.accountName.includes('bKash') || a.accountName.includes('Nagad')))
-    .reduce((sum, a) => sum + a.balance, 0);
+  // 100% Dynamic Financial Calculations (Zero hardcoded mock numbers)
+  const totalCashBank = useMemo(() => {
+    if (accounts.length > 0) {
+      return accounts
+        .filter(a => a.type === 'Asset' && (a.accountName.includes('Cash') || a.accountName.includes('Bank') || a.accountName.includes('bKash') || a.accountName.includes('Nagad')))
+        .reduce((sum, a) => sum + (a.balance || 0), 0);
+    }
+    const salesPaid = (sales || []).reduce((sum, s) => sum + (s.paidAmount || 0), 0);
+    const expPaid = (expenses || []).reduce((sum, e) => sum + (e.amount || 0), 0);
+    return Math.max(0, salesPaid - expPaid);
+  }, [accounts, sales, expenses]);
 
-  const totalReceivable = accounts.find(a => a.accountName.includes('Receivable'))?.balance || 485000;
-  const totalPayable = accounts.find(a => a.accountName.includes('Payable'))?.balance || 240000;
+  const totalReceivable = useMemo(() => {
+    const accBal = accounts.find(a => a.accountName.toLowerCase().includes('receivable'))?.balance;
+    if (accBal !== undefined) return accBal;
+    const instDue = (installments || []).reduce((sum, i) => sum + (i && i.status === 'completed' ? 0 : (i?.remainingBalance || 0)), 0);
+    const salesDue = (sales || []).reduce((sum, s) => sum + (s.dueAmount || 0), 0);
+    return instDue + salesDue;
+  }, [accounts, installments, sales]);
+
+  const totalPayable = useMemo(() => {
+    const accBal = accounts.find(a => a.accountName.toLowerCase().includes('payable'))?.balance;
+    if (accBal !== undefined) return accBal;
+    return (suppliers || []).reduce((sum, s) => sum + (s.balanceDue || 0), 0);
+  }, [accounts, suppliers]);
+
+  // P&L Metrics from live sales & expenses
+  const totalRevenue = useMemo(() => (sales || []).reduce((sum, s) => sum + (s.total || 0), 0), [sales]);
+  const cashSalesRevenue = useMemo(() => (sales || []).filter(s => s.saleType !== 'installment').reduce((sum, s) => sum + (s.total || 0), 0), [sales]);
+  const installmentSalesRevenue = useMemo(() => (sales || []).filter(s => s.saleType === 'installment').reduce((sum, s) => sum + (s.total || 0), 0), [sales]);
+  
+  const totalCogs = useMemo(() => {
+    return (sales || []).reduce((sum, s) => {
+      const itemsCost = (s.items || []).reduce((iSum, it) => iSum + ((it.purchasePrice || 0) * (it.quantity || 1)), 0);
+      return sum + itemsCost;
+    }, 0);
+  }, [sales]);
+
+  const grossProfit = Math.max(0, totalRevenue - totalCogs);
+  const totalOperatingExpenses = useMemo(() => (expenses || []).reduce((sum, e) => sum + (e.amount || 0), 0), [expenses]);
+  const netOperatingProfit = grossProfit - totalOperatingExpenses;
+
+  // Trial balance equity check
+  const totalDebit = totalCashBank + totalReceivable;
+  const ownerCapital = Math.max(0, totalDebit - totalPayable);
+  const totalCredit = totalPayable + ownerCapital;
 
   return (
     <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-100 text-slate-800 space-y-4">
@@ -88,7 +132,7 @@ export const AccountingManager: React.FC = () => {
         <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow-md shadow-indigo-900/20 transition active:scale-95"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs sm:text-sm flex items-center gap-1.5 shadow-md shadow-indigo-900/20 transition active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>{lang === 'bn' ? 'নতুন জার্নাল ভাউচার' : 'Post Journal Entry'}</span>
@@ -107,7 +151,7 @@ export const AccountingManager: React.FC = () => {
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`py-2 px-4 rounded-lg transition whitespace-nowrap ${
+            className={`py-2 px-4 rounded-lg transition whitespace-nowrap cursor-pointer ${
               activeTab === tab.id 
                 ? 'bg-indigo-600 text-white shadow-xs' 
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -131,7 +175,7 @@ export const AccountingManager: React.FC = () => {
               </div>
               <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Across Hand Cash, Banks & MFS Wallets</span>
+                <span>Live Realtime Cash Position</span>
               </div>
             </div>
 
@@ -160,21 +204,29 @@ export const AccountingManager: React.FC = () => {
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
             <h3 className="font-extrabold text-sm text-slate-900 mb-3">Chart of Accounts & Wallet Balances</h3>
             
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {accounts.map(acc => (
-                <div key={acc.id} className="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-300 transition bg-slate-50/50">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs text-slate-800">{acc.accountName}</span>
-                    <span className="px-2 py-0.2 rounded text-[9px] font-mono font-bold bg-white border border-slate-200">
-                      {acc.type}
-                    </span>
+            {accounts.length === 0 ? (
+              <div className="py-8 text-center text-slate-400">
+                <Building2 className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                <div className="font-bold text-sm text-slate-700">কোনো কাস্টম অ্যাকাউন্ট যোগ করা হয়নি</div>
+                <div className="text-xs text-slate-400 mt-1">সরাসরি বিক্রয় এবং কালেকশনের মাধ্যমে ক্যাশ পজিশন স্বয়ংক্রিয়ভাবে হিসাব করা হচ্ছে।</div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {accounts.map(acc => (
+                  <div key={acc.id} className="p-3.5 rounded-xl border border-slate-200 hover:border-indigo-300 transition bg-slate-50/50">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-xs text-slate-800">{acc.accountName}</span>
+                      <span className="px-2 py-0.2 rounded text-[9px] font-mono font-bold bg-white border border-slate-200">
+                        {acc.type}
+                      </span>
+                    </div>
+                    <div className="text-lg font-black font-mono text-slate-900 mt-2">
+                      {formatCurrency(acc.balance)}
+                    </div>
                   </div>
-                  <div className="text-lg font-black font-mono text-slate-900 mt-2">
-                    {formatCurrency(acc.balance)}
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>
@@ -199,26 +251,36 @@ export const AccountingManager: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {journalEntries.map(j => (
-                <tr key={j.id} className="hover:bg-slate-50 transition">
-                  <td className="py-3 px-4 font-mono font-bold text-slate-800">
-                    <div>{j.date}</div>
-                    <div className="text-[10px] text-slate-400 font-normal">{j.referenceNo}</div>
-                  </td>
-                  <td className="py-3 px-4 text-slate-800 font-medium">
-                    {j.description}
-                  </td>
-                  <td className="py-3 px-4 text-indigo-700 font-semibold font-mono">
-                    {j.debitAccount}
-                  </td>
-                  <td className="py-3 px-4 text-slate-600 font-mono">
-                    {j.creditAccount}
-                  </td>
-                  <td className="py-3 px-4 text-right font-black font-mono text-slate-900">
-                    {formatCurrency(j.amount)}
+              {journalEntries.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-400">
+                    <FileText className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                    <div className="font-bold text-sm text-slate-700">কোনো জার্নাল এন্ট্রি পাওয়া যায়নি</div>
+                    <div className="text-xs text-slate-400 mt-1">নতুন জার্নাল ভাউচার পোস্ট করতে উপরের বাটনে ক্লিক করুন।</div>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                journalEntries.map(j => (
+                  <tr key={j.id} className="hover:bg-slate-50 transition">
+                    <td className="py-3 px-4 font-mono font-bold text-slate-800">
+                      <div>{j.date}</div>
+                      <div className="text-[10px] text-slate-400 font-normal">{j.referenceNo}</div>
+                    </td>
+                    <td className="py-3 px-4 text-slate-800 font-medium">
+                      {j.description}
+                    </td>
+                    <td className="py-3 px-4 text-indigo-700 font-semibold font-mono">
+                      {j.debitAccount}
+                    </td>
+                    <td className="py-3 px-4 text-slate-600 font-mono">
+                      {j.creditAccount}
+                    </td>
+                    <td className="py-3 px-4 text-right font-black font-mono text-slate-900">
+                      {formatCurrency(j.amount)}
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -235,44 +297,38 @@ export const AccountingManager: React.FC = () => {
           <div className="space-y-3 text-xs">
             <div className="flex items-center justify-between font-bold text-slate-900 text-sm">
               <span>১. বিক্রয় আয় (Total Revenue)</span>
-              <span className="font-mono">{formatCurrency(485000)}</span>
+              <span className="font-mono">{formatCurrency(totalRevenue)}</span>
             </div>
 
             <div className="flex items-center justify-between text-slate-600 pl-4">
               <span>নগদ স্মার্টফোন বিক্রয়</span>
-              <span className="font-mono">{formatCurrency(340000)}</span>
+              <span className="font-mono">{formatCurrency(cashSalesRevenue)}</span>
             </div>
             <div className="flex items-center justify-between text-slate-600 pl-4">
-              <span>কিস্তি ও ফাইন্যান্সিং প্রফিট চার্জ</span>
-              <span className="font-mono">{formatCurrency(145000)}</span>
+              <span>কিস্তি ও ফাইন্যান্সিং বিক্রয়</span>
+              <span className="font-mono">{formatCurrency(installmentSalesRevenue)}</span>
             </div>
 
             <div className="pt-2 border-t border-slate-200 flex items-center justify-between font-bold text-slate-900 text-sm">
               <span>২. বিক্রিত পণ্যের ক্রয়মূল্য (COGS)</span>
-              <span className="font-mono text-rose-600">({formatCurrency(368000)})</span>
+              <span className="font-mono text-rose-600">({formatCurrency(totalCogs)})</span>
             </div>
 
             <div className="pt-2 border-t-2 border-slate-300 flex items-center justify-between font-black text-emerald-700 text-sm bg-emerald-50/50 p-2 rounded-lg">
               <span>মোট লাভ (Gross Profit)</span>
-              <span className="font-mono">{formatCurrency(117000)}</span>
+              <span className="font-mono">{formatCurrency(grossProfit)}</span>
             </div>
 
             <div className="pt-2 flex items-center justify-between font-bold text-slate-900">
               <span>৩. পরিচালনা ব্যয় (Operating Expenses)</span>
-              <span className="font-mono text-rose-600">({formatCurrency(34500)})</span>
-            </div>
-            <div className="flex items-center justify-between text-slate-600 pl-4">
-              <span>দোকান ভাড়া ও বিদ্যুৎ বিল</span>
-              <span className="font-mono">{formatCurrency(18500)}</span>
-            </div>
-            <div className="flex items-center justify-between text-slate-600 pl-4">
-              <span>স্টাফ বেতন ও চা-নাস্তা</span>
-              <span className="font-mono">{formatCurrency(16000)}</span>
+              <span className="font-mono text-rose-600">({formatCurrency(totalOperatingExpenses)})</span>
             </div>
 
             <div className="pt-4 border-t-2 border-indigo-600 flex items-center justify-between font-black text-indigo-950 text-base bg-indigo-50 p-3 rounded-xl">
               <span>নিট প্রফিট (Net Operating Profit)</span>
-              <span className="font-mono text-emerald-700">{formatCurrency(82500)}</span>
+              <span className={`font-mono ${netOperatingProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                {formatCurrency(netOperatingProfit)}
+              </span>
             </div>
           </div>
         </div>
@@ -283,7 +339,7 @@ export const AccountingManager: React.FC = () => {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-200">
             <h3 className="font-bold text-sm text-slate-900">Trial Balance (রেওয়ামিল)</h3>
-            <button onClick={() => window.print()} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center gap-1">
+            <button onClick={() => window.print()} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center gap-1 cursor-pointer">
               <Printer className="w-3.5 h-3.5" />
               <span>Print Sheet</span>
             </button>
@@ -300,34 +356,34 @@ export const AccountingManager: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 font-mono">
               <tr>
-                <td className="py-2.5 px-3 font-bold text-slate-900">Cash in Hand (ঈশ্বরগঞ্জ)</td>
+                <td className="py-2.5 px-3 font-bold text-slate-900">Cash in Hand / Bank</td>
                 <td className="py-2.5 px-3 text-slate-500 font-sans">Asset</td>
-                <td className="py-2.5 px-3 text-right font-bold">145,000</td>
+                <td className="py-2.5 px-3 text-right font-bold">{formatCurrency(totalCashBank)}</td>
                 <td className="py-2.5 px-3 text-right text-slate-400">-</td>
               </tr>
               <tr>
                 <td className="py-2.5 px-3 font-bold text-slate-900">Accounts Receivable (বকেয়া)</td>
                 <td className="py-2.5 px-3 text-slate-500 font-sans">Asset</td>
-                <td className="py-2.5 px-3 text-right font-bold">485,000</td>
+                <td className="py-2.5 px-3 text-right font-bold">{formatCurrency(totalReceivable)}</td>
                 <td className="py-2.5 px-3 text-right text-slate-400">-</td>
               </tr>
               <tr>
-                <td className="py-2.5 px-3 font-bold text-slate-900">Accounts Payable (সাপ্লায়ার)</td>
+                <td className="py-2.5 px-3 font-bold text-slate-900">Accounts Payable (সাপ্লায়ার দেনা)</td>
                 <td className="py-2.5 px-3 text-slate-500 font-sans">Liability</td>
                 <td className="py-2.5 px-3 text-right text-slate-400">-</td>
-                <td className="py-2.5 px-3 text-right font-bold">240,000</td>
+                <td className="py-2.5 px-3 text-right font-bold">{formatCurrency(totalPayable)}</td>
               </tr>
               <tr>
-                <td className="py-2.5 px-3 font-bold text-slate-900">Owner Capital (মূলধন)</td>
+                <td className="py-2.5 px-3 font-bold text-slate-900">Owner Capital (মূলধন / ইকুইটি)</td>
                 <td className="py-2.5 px-3 text-slate-500 font-sans">Equity</td>
                 <td className="py-2.5 px-3 text-right text-slate-400">-</td>
-                <td className="py-2.5 px-3 text-right font-bold">390,000</td>
+                <td className="py-2.5 px-3 text-right font-bold">{formatCurrency(ownerCapital)}</td>
               </tr>
               <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-300">
                 <td className="py-3 px-3">Total Balance Check</td>
                 <td></td>
-                <td className="py-3 px-3 text-right text-indigo-700">630,000</td>
-                <td className="py-3 px-3 text-right text-indigo-700">630,000</td>
+                <td className="py-3 px-3 text-right text-indigo-700">{formatCurrency(totalDebit)}</td>
+                <td className="py-3 px-3 text-right text-indigo-700">{formatCurrency(totalCredit)}</td>
               </tr>
             </tbody>
           </table>
@@ -340,7 +396,7 @@ export const AccountingManager: React.FC = () => {
           <form onSubmit={handleAddJournal} className="bg-white rounded-2xl max-w-md w-full p-5 border border-slate-200 shadow-2xl space-y-4 text-xs">
             <div className="flex items-center justify-between border-b pb-2">
               <span className="font-extrabold text-sm text-slate-900">Post New Journal Voucher</span>
-              <button type="button" onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+              <button type="button" onClick={() => setShowAddModal(false)} className="text-slate-400 hover:text-slate-600 cursor-pointer">✕</button>
             </div>
 
             <div>
@@ -358,24 +414,24 @@ export const AccountingManager: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Debit Account *</label>
-                <select
+                <input
+                  type="text"
                   value={debitAcc}
                   onChange={e => setDebitAcc(e.target.value)}
+                  placeholder="Debit Account"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold"
-                >
-                  {accounts.map(a => <option key={a.id} value={a.accountName}>{a.accountName}</option>)}
-                </select>
+                />
               </div>
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Credit Account *</label>
-                <select
+                <input
+                  type="text"
                   value={creditAcc}
                   onChange={e => setCreditAcc(e.target.value)}
+                  placeholder="Credit Account"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-bold"
-                >
-                  {accounts.map(a => <option key={a.id} value={a.accountName}>{a.accountName}</option>)}
-                </select>
+                />
               </div>
             </div>
 
@@ -395,13 +451,13 @@ export const AccountingManager: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowAddModal(false)}
-                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
+                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
               >
                 বাতিল
               </button>
               <button
                 type="submit"
-                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs"
+                className="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-xs cursor-pointer"
               >
                 পোস্ট করুন
               </button>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   BarChart3, 
@@ -36,7 +36,9 @@ export const ReportCenter80: React.FC = () => {
     installments, 
     devices, 
     sales, 
-    accounts 
+    accounts,
+    expenses,
+    journalEntries
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -44,6 +46,7 @@ export const ReportCenter80: React.FC = () => {
   const [selectedPeriod, setSelectedPeriod] = useState<'Today' | 'Yesterday' | 'This Week' | 'This Month' | 'Last Month' | 'This Year' | 'Lifetime'>('This Month');
   const [activeReport, setActiveReport] = useState<ReportDefinition | null>(null);
   const [fontSizeAdjust, setFontSizeAdjust] = useState<number>(0);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
 
   // 80 Complete Report Catalog
   const REPORTS_CATALOG: ReportDefinition[] = [
@@ -110,6 +113,92 @@ export const ReportCenter80: React.FC = () => {
     { id: 54, code: 'R-54', name: 'Staff Attendance & Payroll Register', nameBn: 'স্টাফ উপস্থিতি ও বেতন শিট', group: 'audit', description: 'কর্মচারীদের মূল বেতন, অগ্রিম ও কর্তন।' },
     { id: 55, code: 'R-55', name: 'Sales Tax / VAT Return Summary (NBR)', nameBn: 'মূসক ও ভ্যাট রিটার্ন রিপোর্ট', group: 'audit', description: 'সরকারি চালান অনুযায়ী সংগৃহীত ভ্যাটের হিসাব।' }
   ];
+
+  // Dynamic Real Data for Aging Report (R-07)
+  const agingList = useMemo(() => {
+    return (installments || [])
+      .filter(i => i && i.status !== 'completed' && (i.remainingBalance || 0) > 0)
+      .map(inst => {
+        const dueSchedule = (inst.schedule || []).find(s => !s.isPaid);
+        const dueDate = dueSchedule ? new Date(dueSchedule.dueDate) : new Date(inst.createdAt || Date.now());
+        const now = new Date();
+        const diffDays = Math.max(0, Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
+        const bal = inst.remainingBalance || 0;
+        return {
+          id: inst.id,
+          customerName: inst.customerName,
+          customerPhone: inst.customerPhone,
+          deviceModel: inst.productNameSummary || 'Handset',
+          days1_30: diffDays <= 30 ? bal : 0,
+          days31_60: diffDays > 30 && diffDays <= 60 ? bal : 0,
+          days61_90: diffDays > 60 && diffDays <= 90 ? bal : 0,
+          days90Plus: diffDays > 90 ? bal : 0,
+          total: bal
+        };
+      });
+  }, [installments]);
+
+  const agingTotals = useMemo(() => {
+    return agingList.reduce((acc, row) => ({
+      days1_30: acc.days1_30 + row.days1_30,
+      days31_60: acc.days31_60 + row.days31_60,
+      days61_90: acc.days61_90 + row.days61_90,
+      days90Plus: acc.days90Plus + row.days90Plus,
+      total: acc.total + row.total
+    }), { days1_30: 0, days31_60: 0, days61_90: 0, days90Plus: 0, total: 0 });
+  }, [agingList]);
+
+  // Dynamic Real Data for Standard Master Ledger
+  const ledgerRows = useMemo(() => {
+    const list: { sl: string; desc: string; ref: string; debit: number; credit: number; balance: number }[] = [];
+    let running = 0;
+
+    if (journalEntries && journalEntries.length > 0) {
+      journalEntries.forEach((j, idx) => {
+        running += (j.amount || 0);
+        list.push({
+          sl: String(idx + 1).padStart(2, '0'),
+          desc: `${j.description} (${j.debitAccount} / ${j.creditAccount})`,
+          ref: j.referenceNo || `REF-${idx + 1}`,
+          debit: j.amount || 0,
+          credit: 0,
+          balance: running
+        });
+      });
+    } else {
+      (sales || []).forEach((s, idx) => {
+        running += (s.paidAmount || 0);
+        list.push({
+          sl: String(list.length + 1).padStart(2, '0'),
+          desc: `নগদ বিক্রয় চালান আদায় (${s.customerName || 'Customer'})`,
+          ref: s.invoiceNumber || `INV-${idx + 1}`,
+          debit: s.paidAmount || 0,
+          credit: 0,
+          balance: running
+        });
+      });
+      (expenses || []).forEach((e, idx) => {
+        running -= (e.amount || 0);
+        list.push({
+          sl: String(list.length + 1).padStart(2, '0'),
+          desc: `দোকান খরচ: ${e.title} (${e.category || 'Expense'})`,
+          ref: `EXP-${idx + 1}`,
+          debit: 0,
+          credit: e.amount || 0,
+          balance: running
+        });
+      });
+    }
+    return list;
+  }, [journalEntries, sales, expenses]);
+
+  const ledgerTotals = useMemo(() => {
+    return ledgerRows.reduce((acc, row) => ({
+      debit: acc.debit + row.debit,
+      credit: acc.credit + row.credit,
+      balance: row.balance
+    }), { debit: 0, credit: 0, balance: 0 });
+  }, [ledgerRows]);
 
   const filteredReports = REPORTS_CATALOG.filter(r => {
     const matchSearch = r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -262,14 +351,24 @@ export const ReportCenter80: React.FC = () => {
                   </button>
 
                   <button
-                    onClick={() => alert('Excel (.xlsx) data export generated successfully.')}
-                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs transition"
+                    onClick={() => {
+                      setExportNotice(lang === 'bn' ? 'রিপোর্ট এক্সেল (.xlsx) ফরম্যাটে প্রস্তুত করা হয়েছে।' : 'Report generated in Excel format.');
+                      setTimeout(() => setExportNotice(null), 3000);
+                    }}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-xs transition cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
                     <span>Excel</span>
                   </button>
                 </div>
               </div>
+
+              {exportNotice && (
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center gap-2">
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{exportNotice}</span>
+                </div>
+              )}
 
               {/* Printable Letterhead & Report Body */}
               <div 
@@ -307,28 +406,34 @@ export const ReportCenter80: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-300 bg-white font-mono">
-                      <tr>
-                        <td className="p-2 font-sans font-semibold">মোছাঃ সুমি আক্তার (01987654321)</td>
-                        <td className="p-2 font-sans">Redmi Note 13</td>
-                        <td className="p-2 text-slate-400">-</td>
-                        <td className="p-2 font-bold text-amber-600">4,200</td>
-                        <td className="p-2 text-slate-400">-</td>
-                        <td className="p-2 text-right text-slate-400">-</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2 font-sans font-semibold">তানভীর হাসান (01812349988)</td>
-                        <td className="p-2 font-sans">Realme 12x 5G</td>
-                        <td className="p-2 font-bold text-slate-700">3,000</td>
-                        <td className="p-2 text-slate-400">-</td>
-                        <td className="p-2 text-slate-400">-</td>
-                        <td className="p-2 text-right text-slate-400">-</td>
-                      </tr>
+                      {agingList.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="p-6 text-center text-slate-400 font-sans">
+                            <Check className="w-6 h-6 mx-auto text-emerald-500 mb-1" />
+                            <div className="font-bold text-slate-700">কোনো বকেয়া কিস্তির তথ্য নেই</div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">নতুন আইডি অথবা সকল কিস্তি সম্পূর্ণরূপে পরিশোধিত রয়েছে।</div>
+                          </td>
+                        </tr>
+                      ) : (
+                        agingList.map(item => (
+                          <tr key={item.id}>
+                            <td className="p-2 font-sans font-semibold">
+                              {item.customerName} ({item.customerPhone})
+                            </td>
+                            <td className="p-2 font-sans">{item.deviceModel}</td>
+                            <td className="p-2 text-slate-700">{item.days1_30 > 0 ? formatCurrency(item.days1_30) : '-'}</td>
+                            <td className="p-2 font-bold text-amber-600">{item.days31_60 > 0 ? formatCurrency(item.days31_60) : '-'}</td>
+                            <td className="p-2 font-bold text-rose-500">{item.days61_90 > 0 ? formatCurrency(item.days61_90) : '-'}</td>
+                            <td className="p-2 text-right font-bold text-rose-700">{item.days90Plus > 0 ? formatCurrency(item.days90Plus) : '-'}</td>
+                          </tr>
+                        ))
+                      )}
                       <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-400">
                         <td className="p-2 font-sans" colSpan={2}>Total Outstanding Aging</td>
-                        <td className="p-2">3,000</td>
-                        <td className="p-2 text-amber-700">4,200</td>
-                        <td className="p-2">0</td>
-                        <td className="p-2 text-right text-rose-700">0</td>
+                        <td className="p-2">{formatCurrency(agingTotals.days1_30)}</td>
+                        <td className="p-2 text-amber-700">{formatCurrency(agingTotals.days31_60)}</td>
+                        <td className="p-2 text-rose-600">{formatCurrency(agingTotals.days61_90)}</td>
+                        <td className="p-2 text-right text-rose-700">{formatCurrency(agingTotals.days90Plus)}</td>
                       </tr>
                     </tbody>
                   </table>
@@ -346,35 +451,31 @@ export const ReportCenter80: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-300 bg-white font-mono">
-                      <tr>
-                        <td className="p-2 font-bold">01</td>
-                        <td className="p-2 font-sans">নগদ বিক্রয় চালান আদায়</td>
-                        <td className="p-2">SL-1001</td>
-                        <td className="p-2 text-emerald-600 font-bold">18,500</td>
-                        <td className="p-2 text-slate-400">-</td>
-                        <td className="p-2 text-right font-bold">18,500</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2 font-bold">02</td>
-                        <td className="p-2 font-sans">ইএমআই কিস্তির মাসিক চালান জমা</td>
-                        <td className="p-2">C-2026-01</td>
-                        <td className="p-2 text-emerald-600 font-bold">3,500</td>
-                        <td className="p-2 text-slate-400">-</td>
-                        <td className="p-2 text-right font-bold">22,000</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2 font-bold">03</td>
-                        <td className="p-2 font-sans">শোরুম বিদ্যুৎ বিল ও পানি খরচ</td>
-                        <td className="p-2">EXP-44</td>
-                        <td className="p-2 text-slate-400">-</td>
-                        <td className="p-2 text-rose-600 font-bold">2,400</td>
-                        <td className="p-2 text-right font-bold">19,600</td>
-                      </tr>
+                      {ledgerRows.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="p-6 text-center text-slate-400 font-sans">
+                            <FileText className="w-6 h-6 mx-auto text-slate-300 mb-1" />
+                            <div className="font-bold text-slate-700">কোনো লেনদেন এন্ট্রি নেই</div>
+                            <div className="text-[11px] text-slate-400 mt-0.5">নতুন ফ্রেশ অ্যাকাউন্টে বিক্রয় বা খরচ লিপিবদ্ধ হলে সরাসরি এখানে দৃশ্যমান হবে।</div>
+                          </td>
+                        </tr>
+                      ) : (
+                        ledgerRows.map(row => (
+                          <tr key={row.sl}>
+                            <td className="p-2 font-bold">{row.sl}</td>
+                            <td className="p-2 font-sans">{row.desc}</td>
+                            <td className="p-2">{row.ref}</td>
+                            <td className="p-2 text-emerald-600 font-bold">{row.debit > 0 ? formatCurrency(row.debit) : '-'}</td>
+                            <td className="p-2 text-rose-600 font-bold">{row.credit > 0 ? formatCurrency(row.credit) : '-'}</td>
+                            <td className="p-2 text-right font-bold">{formatCurrency(row.balance)}</td>
+                          </tr>
+                        ))
+                      )}
                       <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-400">
                         <td className="p-2 font-sans" colSpan={3}>Summary Balance</td>
-                        <td className="p-2 text-emerald-700">22,000</td>
-                        <td className="p-2 text-rose-700">2,400</td>
-                        <td className="p-2 text-right text-indigo-700">19,600</td>
+                        <td className="p-2 text-emerald-700">{formatCurrency(ledgerTotals.debit)}</td>
+                        <td className="p-2 text-rose-700">{formatCurrency(ledgerTotals.credit)}</td>
+                        <td className="p-2 text-right text-indigo-700">{formatCurrency(ledgerTotals.balance)}</td>
                       </tr>
                     </tbody>
                   </table>

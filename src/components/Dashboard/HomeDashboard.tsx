@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { 
   Users, 
@@ -41,26 +41,102 @@ export const HomeDashboard: React.FC = () => {
     addDeviceCredits
   } = useApp();
 
-  // Metrics calculation
-  const totalCustomers = (customerProfiles || []).length > 0 ? customerProfiles.length : 42;
-  const resellerCount = 6;
+  const [creditNotice, setCreditNotice] = useState<string | null>(null);
+
+  const handleAddCredits = (amount: number = 10) => {
+    addDeviceCredits(amount);
+    setCreditNotice(lang === 'bn' ? `${amount}টি ডিভাইস ক্রেডিট যোগ করা হয়েছে!` : `${amount} Device Credits added!`);
+    setTimeout(() => setCreditNotice(null), 3000);
+  };
+
+  // Metrics calculation 100% dynamic from Firebase Firestore collections
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth();
+
+  const thisMonthSales = useMemo(() => {
+    return (sales || []).filter(s => {
+      if (!s.createdAt) return false;
+      const d = new Date(s.createdAt);
+      return d.getFullYear() === currentYear && d.getMonth() === currentMonth;
+    });
+  }, [sales, currentYear, currentMonth]);
+
+  const monthSalesTotal = useMemo(() => {
+    return thisMonthSales.reduce((sum, s) => sum + (s.total || 0), 0);
+  }, [thisMonthSales]);
+
+  // Last month sales for comparison
+  const lastMonthSales = useMemo(() => {
+    const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+    const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+    return (sales || []).filter(s => {
+      if (!s.createdAt) return false;
+      const d = new Date(s.createdAt);
+      return d.getFullYear() === lastMonthYear && d.getMonth() === lastMonth;
+    }).reduce((sum, s) => sum + (s.total || 0), 0);
+  }, [sales, currentYear, currentMonth]);
+
+  const salesGrowthText = useMemo(() => {
+    if (lastMonthSales === 0) {
+      if (monthSalesTotal > 0) {
+        return `${thisMonthSales.length} ${lang === 'bn' ? 'টি বিক্রয় ইনভয়েস' : 'sales orders'}`;
+      }
+      return lang === 'bn' ? 'নতুন অ্যাকাউন্ট (০ বিক্রয়)' : 'Fresh account (0 sales)';
+    }
+    const pct = Math.round(((monthSalesTotal - lastMonthSales) / lastMonthSales) * 100);
+    return `${pct >= 0 ? '+' : ''}${pct}% vs last mo`;
+  }, [lastMonthSales, monthSalesTotal, thisMonthSales.length, lang]);
+
+  // Dynamic 7-day sparkline from actual sales data
+  const sparklineDays = useMemo(() => {
+    const days: { day: string; amt: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dayStr = d.toISOString().split('T')[0];
+      const dayDisplay = d.toLocaleDateString(lang === 'bn' ? 'bn-BD' : 'en-US', { day: '2-digit' });
+      const dayTotal = (sales || [])
+        .filter(s => s.createdAt && s.createdAt.startsWith(dayStr))
+        .reduce((sum, s) => sum + (s.total || 0), 0);
+      days.push({ day: dayDisplay, amt: dayTotal });
+    }
+    return days;
+  }, [sales, lang]);
+
+  const maxSparklineAmt = Math.max(...sparklineDays.map(d => d.amt), 1);
+
+  // 100% Real Live Unique Customers
+  const uniqueCustomerCount = useMemo(() => {
+    const set = new Set<string>();
+    (customerProfiles || []).forEach(cp => {
+      if (cp.phone) set.add(cp.phone);
+      else if (cp.id) set.add(cp.id);
+    });
+    (sales || []).forEach(s => {
+      if (s.customerPhone && s.customerPhone !== 'N/A') set.add(s.customerPhone);
+    });
+    (installments || []).forEach(inst => {
+      if (inst.customerPhone && inst.customerPhone !== 'N/A') set.add(inst.customerPhone);
+    });
+    return set.size;
+  }, [customerProfiles, sales, installments]);
+
+  const verifiedKycCount = useMemo(() => {
+    return (customerProfiles || []).filter(c => c.nidNumber && c.nidNumber.trim()).length;
+  }, [customerProfiles]);
+
   const totalFinancedDevices = (devices || []).length;
   const restrictedDevices = (devices || []).filter(d => d && (d.financeStatus === 'RESTRICTED' || d.lockStatus === 'LOCKED')).length;
   
-  const totalOutstanding = (installments || []).reduce((acc, i) => acc + (i && i.status === 'completed' ? 0 : (i?.remainingBalance || 0)), 0);
-  const overdueCount = (installments || []).filter(i => i && i.status === 'overdue').length;
+  // Real Outstanding Due (Installments Balance + Sales Due)
+  const totalOutstanding = useMemo(() => {
+    const instDue = (installments || []).reduce((acc, i) => acc + (i && i.status === 'completed' ? 0 : (i?.remainingBalance || 0)), 0);
+    const salesDue = (sales || []).reduce((acc, s) => acc + (s.dueAmount || 0), 0);
+    return instDue + salesDue;
+  }, [installments, sales]);
 
-  // Mini Chart data simulation for "This Month"
-  const chartDays = [
-    { day: '01', amt: 12 },
-    { day: '05', amt: 24 },
-    { day: '10', amt: 18 },
-    { day: '15', amt: 35 },
-    { day: '20', amt: 29 },
-    { day: '25', amt: 42 },
-    { day: '30', amt: 50 },
-  ];
-  const maxAmt = Math.max(...chartDays.map(d => d.amt));
+  const overdueCount = (installments || []).filter(i => i && i.status === 'overdue').length;
 
   const todayStr = new Intl.DateTimeFormat(lang === 'bn' ? 'bn-BD' : 'en-US', {
     weekday: 'long',
@@ -72,7 +148,7 @@ export const HomeDashboard: React.FC = () => {
   return (
     <div className="flex-1 overflow-y-auto p-3 sm:p-5 bg-slate-100 text-slate-800 space-y-5">
       
-      {/* 1. Greeting Banner & "This Month" Mini Trend */}
+      {/* 1. Greeting Banner & "This Month" Live Sales Trend */}
       <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white rounded-2xl p-4 sm:p-6 shadow-xl border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -91,31 +167,36 @@ export const HomeDashboard: React.FC = () => {
           </p>
         </div>
 
-        {/* "This Month" Mini Chart */}
+        {/* "This Month" Live Sales & Sparkline */}
         <div className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-3 shrink-0 flex items-center gap-4">
           <div>
-            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">This Month Sales</div>
+            <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+              {lang === 'bn' ? 'চলতি মাসের মোট বিক্রয়' : 'This Month Sales'}
+            </div>
             <div className="text-base sm:text-lg font-black text-indigo-300 font-mono">
-              {formatCurrency(145000)}
+              {formatCurrency(monthSalesTotal)}
             </div>
             <div className="text-[10px] text-emerald-400 flex items-center gap-0.5 mt-0.5">
               <TrendingUp className="w-3 h-3" />
-              <span>+18.4% vs last mo</span>
+              <span>{salesGrowthText}</span>
             </div>
           </div>
 
           {/* Bar sparkline */}
           <div className="flex items-end gap-1.5 h-10 pt-1">
-            {chartDays.map((d, idx) => (
-              <div key={idx} className="flex flex-col items-center gap-1">
-                <div 
-                  className="w-2.5 rounded-xs bg-indigo-500 hover:bg-indigo-400 transition" 
-                  style={{ height: `${(d.amt / maxAmt) * 32}px` }}
-                  title={`Day ${d.day}: ${d.amt} units`}
-                />
-                <span className="text-[8px] text-slate-500 font-mono">{d.day}</span>
-              </div>
-            ))}
+            {sparklineDays.map((d, idx) => {
+              const heightPx = monthSalesTotal > 0 ? Math.max(3, (d.amt / maxSparklineAmt) * 32) : 3;
+              return (
+                <div key={idx} className="flex flex-col items-center gap-1">
+                  <div 
+                    className={`w-2.5 rounded-xs transition ${d.amt > 0 ? 'bg-indigo-500 hover:bg-indigo-400' : 'bg-slate-700'}`} 
+                    style={{ height: `${heightPx}px` }}
+                    title={`${d.day}: ${formatCurrency(d.amt)}`}
+                  />
+                  <span className="text-[8px] text-slate-500 font-mono">{d.day}</span>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -124,7 +205,7 @@ export const HomeDashboard: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
         <button
           onClick={() => setActiveTab('pos')}
-          className="group p-4 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white rounded-2xl shadow-lg shadow-emerald-950/20 flex items-center justify-between transition-all transform active:scale-98"
+          className="group p-4 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white rounded-2xl shadow-lg shadow-emerald-950/20 flex items-center justify-between transition-all transform active:scale-98 cursor-pointer"
         >
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-xs group-hover:scale-105 transition">
@@ -144,7 +225,7 @@ export const HomeDashboard: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('installments')}
-          className="group p-4 bg-gradient-to-r from-indigo-600 to-violet-700 hover:from-indigo-500 hover:to-violet-600 text-white rounded-2xl shadow-lg shadow-indigo-950/20 flex items-center justify-between transition-all transform active:scale-98"
+          className="group p-4 bg-gradient-to-r from-indigo-600 to-violet-700 hover:from-indigo-500 hover:to-violet-600 text-white rounded-2xl shadow-lg shadow-indigo-950/20 flex items-center justify-between transition-all transform active:scale-98 cursor-pointer"
         >
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-xs group-hover:scale-105 transition">
@@ -176,11 +257,11 @@ export const HomeDashboard: React.FC = () => {
             <Users className="w-4 h-4 text-indigo-600" />
           </div>
           <div className="text-2xl font-black text-slate-900 mt-2 font-mono">
-            {totalCustomers}
+            {uniqueCustomerCount}
           </div>
           <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
-            <span className="font-semibold text-indigo-600">+{resellerCount}</span>
-            <span>{lang === 'bn' ? 'রিসেলার/ডিলার সহ' : 'inc. resellers'}</span>
+            <span className="font-semibold text-indigo-600">{verifiedKycCount}</span>
+            <span>{lang === 'bn' ? 'কেওয়াইসি ভেরিফাইড' : 'KYC verified'}</span>
           </div>
         </div>
 
@@ -214,7 +295,7 @@ export const HomeDashboard: React.FC = () => {
             <DollarSign className="w-4 h-4 text-rose-600" />
           </div>
           <div className="text-2xl font-black text-rose-600 mt-2 font-mono">
-            {formatCurrency(totalOutstanding || 18700)}
+            {formatCurrency(totalOutstanding)}
           </div>
           <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
             <span className="font-bold text-rose-600">{overdueCount}</span>
@@ -224,7 +305,7 @@ export const HomeDashboard: React.FC = () => {
 
         {/* KPI 4: Credit Balance */}
         <div 
-          onClick={() => addDeviceCredits(10)}
+          onClick={() => handleAddCredits(10)}
           className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:border-emerald-300 transition cursor-pointer group"
           title="Click to recharge credits (+10)"
         >
@@ -239,12 +320,24 @@ export const HomeDashboard: React.FC = () => {
             </span>
           </div>
           <div className="text-[11px] text-slate-500 mt-1 flex items-center justify-between">
-            <span>প্রতি এনরোলে ১ ক্রেডিট</span>
+            <span>{lang === 'bn' ? 'প্রতি এনরোলে ১ ক্রেডিট' : '1 credit per enroll'}</span>
             <span className="text-indigo-600 font-bold hover:underline">+Recharge</span>
           </div>
         </div>
 
       </div>
+
+      {creditNotice && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-semibold flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <Coins className="w-4 h-4 text-emerald-600" />
+            <span>{creditNotice}</span>
+          </div>
+          <span className="font-mono text-[11px] bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded font-bold">
+            Live Firestore Synced
+          </span>
+        </div>
+      )}
 
       {/* 4. Locker Shortcuts Grid */}
       <div className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-xs">
@@ -262,7 +355,7 @@ export const HomeDashboard: React.FC = () => {
           
           <button
             onClick={() => setActiveTab('devices')}
-            className="p-3 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 flex flex-col items-center text-center transition group"
+            className="p-3 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50 flex flex-col items-center text-center transition group cursor-pointer"
           >
             <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center group-hover:scale-110 transition">
               <Plus className="w-5 h-5" />
@@ -273,7 +366,7 @@ export const HomeDashboard: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('livewall')}
-            className="p-3 rounded-xl border border-slate-200 hover:border-slate-800 hover:bg-slate-900 hover:text-white flex flex-col items-center text-center transition group"
+            className="p-3 rounded-xl border border-slate-200 hover:border-slate-800 hover:bg-slate-900 hover:text-white flex flex-col items-center text-center transition group cursor-pointer"
           >
             <div className="w-10 h-10 rounded-xl bg-slate-900 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition">
               <Radio className="w-5 h-5 animate-pulse" />
@@ -284,7 +377,7 @@ export const HomeDashboard: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('sms')}
-            className="p-3 rounded-xl border border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 flex flex-col items-center text-center transition group"
+            className="p-3 rounded-xl border border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 flex flex-col items-center text-center transition group cursor-pointer"
           >
             <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center group-hover:scale-110 transition">
               <Send className="w-5 h-5" />
@@ -295,7 +388,7 @@ export const HomeDashboard: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('contracts')}
-            className="p-3 rounded-xl border border-slate-200 hover:border-purple-400 hover:bg-purple-50/50 flex flex-col items-center text-center transition group"
+            className="p-3 rounded-xl border border-slate-200 hover:border-purple-400 hover:bg-purple-50/50 flex flex-col items-center text-center transition group cursor-pointer"
           >
             <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center group-hover:scale-110 transition">
               <FileCheck className="w-5 h-5" />
@@ -306,7 +399,7 @@ export const HomeDashboard: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('installments')}
-            className="p-3 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 flex flex-col items-center text-center transition group"
+            className="p-3 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/50 flex flex-col items-center text-center transition group cursor-pointer"
           >
             <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center group-hover:scale-110 transition">
               <CreditCard className="w-5 h-5" />
@@ -316,11 +409,8 @@ export const HomeDashboard: React.FC = () => {
           </button>
 
           <button
-            onClick={() => {
-              addDeviceCredits(10);
-              alert(lang === 'bn' ? '১০টি ডিভাইস এনরোলমেন্ট ক্রেডিট সফলভাবে যোগ হয়েছে!' : '10 Device Enrollment Credits added successfully!');
-            }}
-            className="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 flex flex-col items-center text-center transition group"
+            onClick={() => handleAddCredits(10)}
+            className="p-3 rounded-xl border border-slate-200 hover:border-blue-400 hover:bg-blue-50/50 flex flex-col items-center text-center transition group cursor-pointer"
           >
             <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center group-hover:scale-110 transition">
               <Coins className="w-5 h-5" />
@@ -331,7 +421,7 @@ export const HomeDashboard: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('usedbuy')}
-            className="p-3 rounded-xl border border-slate-200 hover:border-rose-400 hover:bg-rose-50/50 flex flex-col items-center text-center transition group"
+            className="p-3 rounded-xl border border-slate-200 hover:border-rose-400 hover:bg-rose-50/50 flex flex-col items-center text-center transition group cursor-pointer"
           >
             <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center group-hover:scale-110 transition">
               <Layers className="w-5 h-5" />
@@ -342,7 +432,7 @@ export const HomeDashboard: React.FC = () => {
 
           <button
             onClick={() => setActiveTab('devices')}
-            className="p-3 rounded-xl border border-slate-200 hover:border-red-400 hover:bg-red-50/50 flex flex-col items-center text-center transition group"
+            className="p-3 rounded-xl border border-slate-200 hover:border-red-400 hover:bg-red-50/50 flex flex-col items-center text-center transition group cursor-pointer"
           >
             <div className="w-10 h-10 rounded-xl bg-red-100 text-red-700 flex items-center justify-center group-hover:scale-110 transition">
               <Lock className="w-5 h-5" />
@@ -365,7 +455,7 @@ export const HomeDashboard: React.FC = () => {
           </div>
           <button 
             onClick={() => setActiveTab('devices')}
-            className="text-xs text-indigo-600 font-bold hover:underline"
+            className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer"
           >
             {lang === 'bn' ? 'সব ডিভাইস দেখুন →' : 'View All Fleet →'}
           </button>
@@ -384,48 +474,64 @@ export const HomeDashboard: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {devices.slice(0, 5).map(dev => (
-                <tr key={dev.id} className="hover:bg-slate-50/70 transition">
-                  <td className="py-2.5 px-3">
-                    <div className="font-bold text-slate-900">{dev.model}</div>
-                    <div className="text-[10px] font-mono text-slate-500">{dev.imei1}</div>
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <div className="font-semibold text-slate-800">{dev.customerName}</div>
-                    <div className="text-[10px] font-mono text-slate-500">{dev.customerPhone}</div>
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      dev.liveStatus === 'online' 
-                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                        : 'bg-slate-100 text-slate-600'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${dev.liveStatus === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
-                      {dev.liveStatus.toUpperCase()}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
-                      dev.lockStatus === 'LOCKED'
-                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                        : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                    }`}>
-                      {dev.lockStatus}
-                    </span>
-                  </td>
-                  <td className="py-2.5 px-3 font-mono font-bold text-slate-700">
-                    {dev.batteryPercent}%
-                  </td>
-                  <td className="py-2.5 px-3 text-right">
-                    <button
-                      onClick={() => setActiveTab('devices')}
-                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[11px] transition"
-                    >
-                      Control
-                    </button>
+              {devices.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                    <Smartphone className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                    <div className="font-bold text-sm text-slate-700">
+                      {lang === 'bn' ? 'কোনো ডিভাইস এখনো এনরোল করা হয়নি' : 'No financed devices enrolled yet'}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                      {lang === 'bn' 
+                        ? 'কিস্তিতে বিক্রয়ের সময় ডিভাইস স্বয়ংক্রিয়ভাবে এনরোল হবে অথবা "Add Device" থেকে যোগ করুন।' 
+                        : 'Devices will auto-enroll on financed EMI sales or add manually.'}
+                    </div>
                   </td>
                 </tr>
-              ))}
+              ) : (
+                devices.slice(0, 5).map(dev => (
+                  <tr key={dev.id} className="hover:bg-slate-50/70 transition">
+                    <td className="py-2.5 px-3">
+                      <div className="font-bold text-slate-900">{dev.model}</div>
+                      <div className="text-[10px] font-mono text-slate-500">{dev.imei1}</div>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <div className="font-semibold text-slate-800">{dev.customerName}</div>
+                      <div className="text-[10px] font-mono text-slate-500">{dev.customerPhone}</div>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                        dev.liveStatus === 'online' 
+                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                          : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${dev.liveStatus === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                        {dev.liveStatus.toUpperCase()}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold font-mono ${
+                        dev.lockStatus === 'LOCKED'
+                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                          : 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                      }`}>
+                        {dev.lockStatus}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3 font-mono font-bold text-slate-700">
+                      {dev.batteryPercent}%
+                    </td>
+                    <td className="py-2.5 px-3 text-right">
+                      <button
+                        onClick={() => setActiveTab('devices')}
+                        className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[11px] transition cursor-pointer"
+                      >
+                        Control
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
