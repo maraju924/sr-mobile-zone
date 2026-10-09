@@ -7,6 +7,7 @@ import {
   ArrowRight, 
   CheckCircle2, 
   AlertCircle, 
+  AlertTriangle,
   Eye, 
   EyeOff, 
   KeyRound, 
@@ -40,10 +41,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
+  const [copiedDomain, setCopiedDomain] = useState(false);
+  const [suggestRegister, setSuggestRegister] = useState(false);
 
   // Handle Google Login
   const handleGoogleLogin = async () => {
     setError(null);
+    setUnauthorizedDomain(null);
     setSuccessMsg(null);
     setIsLoading(true);
 
@@ -72,6 +77,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
         return;
       }
+      if (err?.code === 'auth/unauthorized-domain') {
+        const host = typeof window !== 'undefined' ? window.location.hostname : 'vercel.app';
+        setUnauthorizedDomain(host);
+        setError(
+          lang === 'bn'
+            ? `এই ডোমেইনটি (${host}) ফায়ারবেজে অথরাইজড করা নেই। নিচের গাইড দেখে ডোমেইন যোগ করুন অথবা 'ইমেইল ও পাসওয়ার্ড' দিয়ে এখনই লগইন করুন।`
+            : `Domain (${host}) is not authorized in Firebase. Add this domain in Firebase Console or use Email/Password.`
+        );
+        return;
+      }
+      if (err?.code === 'auth/popup-blocked') {
+        setError(
+          lang === 'bn'
+            ? 'ব্রাউজার পপ-আপ ব্লক করেছে। অ্যাড্রেস বার থেকে পপ-আপ এলাও করুন অথবা ইমেইল ও পাসওয়ার্ড দিয়ে সাইন ইন করুন।'
+            : 'Popup blocked by browser. Please allow popups or use Email & Password.'
+        );
+        return;
+      }
       setError(
         lang === 'bn' 
           ? 'গুগল সাইন-ইন ব্যর্থ হয়েছে। ইন্টারনেট সংযোগ চেক করুন অথবা ইমেইল ও পাসওয়ার্ড দিয়ে সাইন ইন করুন।' 
@@ -87,6 +110,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
+    setSuggestRegister(false);
 
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
@@ -150,7 +174,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       } catch (err: any) {
         console.error('Firebase sign-in error:', err);
         if (err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-credential') {
-          setError(lang === 'bn' ? 'ভুল ইমেইল বা পাসওয়ার্ড। নতুন অ্যাকাউন্ট হলে "নতুন অ্যাকাউন্ট তৈরি করুন" সিলেক্ট করুন।' : 'Invalid credentials. Create an account if you are new.');
+          setSuggestRegister(true);
+          setError(lang === 'bn' ? 'ভুল ইমেইল বা পাসওয়ার্ড অথবা অ্যাকাউন্ট তৈরি করা হয়নি। নিচে ক্লিক করে নতুন অ্যাকাউন্ট খুলুন।' : 'Invalid credentials or user not found. Click below to create a new account.');
         } else if (err?.code === 'auth/wrong-password') {
           setError(lang === 'bn' ? 'ভুল পাসওয়ার্ড। আবার চেষ্টা করুন।' : 'Wrong password. Please try again.');
         } else {
@@ -259,9 +284,73 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
           {/* Feedback Messages */}
           {error && (
-            <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 p-3 rounded-2xl text-xs flex items-center gap-2 animate-in fade-in">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-              <span>{error}</span>
+            <div className="space-y-2 animate-in fade-in">
+              <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 p-3 rounded-2xl text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{error}</span>
+              </div>
+              {suggestRegister && !isRegisterMode && activeAuthTab === 'email' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsRegisterMode(true);
+                    setError(null);
+                    setSuggestRegister(false);
+                  }}
+                  className="w-full py-2 bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/50 text-indigo-300 font-bold rounded-xl text-xs transition cursor-pointer text-center"
+                >
+                  👉 এই ইমেইল ({email}) দিয়ে নতুন অ্যাকাউন্ট খুলতে এখানে ক্লিক করুন
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Vercel / Custom Domain Authorized Domains Helper Card */}
+          {unauthorizedDomain && (
+            <div className="bg-amber-950/70 border border-amber-500/40 rounded-2xl p-4 text-xs space-y-3 animate-in fade-in shadow-lg">
+              <div className="flex items-center gap-2 text-amber-300 font-bold">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>Vercel-এ Google Sign-In চালু করার সহজ সমাধান:</span>
+              </div>
+              
+              <div className="text-slate-300 space-y-1.5 leading-relaxed text-[11px]">
+                <div>
+                  <span className="font-bold text-emerald-400">⚡ তাত্ক্ষণিক সমাধান (কোনো সেটআপ লাগবে না):</span> নিচে <strong>'ইমেইল ও পাসওয়ার্ড'</strong> ট্যাবে ক্লিক করে আপনার ইমেইল দিয়ে এখনই লগইন বা নতুন অ্যাকাউন্ট তৈরি করুন। এটি Vercel-এ ১০০% সাথে সাথে কাজ করে।
+                </div>
+                <div>
+                  <span className="font-bold text-indigo-300">🌐 গুগল সাইন-ইন চালু করতে:</span> Firebase Console (<a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-indigo-400 underline font-mono">console.firebase.google.com</a>) &gt; Authentication &gt; Settings &gt; Authorized domains-এ গিয়ে নিচের ডোমেইনটি যোগ (Add) করুন:
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                <code className="text-emerald-400 font-mono text-[11px] flex-1 break-all select-all">
+                  {unauthorizedDomain}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(unauthorizedDomain);
+                    setCopiedDomain(true);
+                    setTimeout(() => setCopiedDomain(false), 2000);
+                  }}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-[10px] font-bold font-mono transition cursor-pointer"
+                >
+                  {copiedDomain ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveAuthTab('email');
+                  setIsRegisterMode(true);
+                  setError(null);
+                  setUnauthorizedDomain(null);
+                }}
+                className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl text-center text-xs transition cursor-pointer shadow-md"
+              >
+                👉 'ইমেইল ও পাসওয়ার্ড' দিয়ে এখনই প্রবেশ করুন
+              </button>
             </div>
           )}
 
