@@ -390,27 +390,64 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         subscriptions.push(subscribeCollectionFromFirestore<SMSLog>('sms_logs', uid, setSmsLogs));
         subscriptions.push(subscribeCollectionFromFirestore<ChatMessage>('chat_messages', uid, setChatMessages));
       } else {
-        // Logged out: Clear all store state to empty array
-        setCurrentUser(null);
-        setProducts([]);
-        setSales([]);
-        setInstallments([]);
-        setReturns([]);
-        setSuppliers([]);
-        setPurchases([]);
-        setRepairs([]);
-        setExpenses([]);
-        setCustomerProfiles([]);
-        setDevices([]);
-        setUsedBuys([]);
-        setStaff([]);
-        setAccounts([]);
-        setJournalEntries([]);
-        setSmsLogs([]);
-        setChatMessages([]);
-        setSettings(DEFAULT_SETTINGS);
-        setCart([]);
-        setDeviceCredits(0);
+        // If user is logged in via local Super Admin / Vercel session, preserve the session!
+        const savedUser = loadFromLocal<AuthUser | null>('phonesell_auth_user', null);
+        if (savedUser && (savedUser.email || savedUser.id)) {
+          setCurrentUser(savedUser);
+          const uid = savedUser.id || 'default_store_owner';
+
+          // Attempt settings load
+          loadSettingsFromFirestore(uid).then(remoteSettings => {
+            if (remoteSettings && remoteSettings.storeName) {
+              setSettings(remoteSettings);
+              setDeviceCredits(remoteSettings.deviceCredits ?? 0);
+            }
+          }).catch(() => {});
+
+          // Subscribe Firestore collections if online/authenticated
+          try {
+            subscriptions.push(subscribeCollectionFromFirestore<Product>('products', uid, setProducts));
+            subscriptions.push(subscribeCollectionFromFirestore<Sale>('sales', uid, setSales));
+            subscriptions.push(subscribeCollectionFromFirestore<Installment>('installments', uid, setInstallments));
+            subscriptions.push(subscribeCollectionFromFirestore<ReturnClaim>('returns', uid, setReturns));
+            subscriptions.push(subscribeCollectionFromFirestore<Supplier>('suppliers', uid, setSuppliers));
+            subscriptions.push(subscribeCollectionFromFirestore<Purchase>('purchases', uid, setPurchases));
+            subscriptions.push(subscribeCollectionFromFirestore<RepairTicket>('repairs', uid, setRepairs));
+            subscriptions.push(subscribeCollectionFromFirestore<Expense>('expenses', uid, setExpenses));
+            subscriptions.push(subscribeCollectionFromFirestore<CustomerCreditProfile>('customer_profiles', uid, setCustomerProfiles));
+            subscriptions.push(subscribeCollectionFromFirestore<Device>('devices', uid, setDevices));
+            subscriptions.push(subscribeCollectionFromFirestore<UsedBuyRecord>('used_buys', uid, setUsedBuys));
+            subscriptions.push(subscribeCollectionFromFirestore<StaffMember>('staff', uid, setStaff));
+            subscriptions.push(subscribeCollectionFromFirestore<AccountEntry>('accounts', uid, setAccounts));
+            subscriptions.push(subscribeCollectionFromFirestore<JournalTransaction>('journal', uid, setJournalEntries));
+            subscriptions.push(subscribeCollectionFromFirestore<SMSLog>('sms_logs', uid, setSmsLogs));
+            subscriptions.push(subscribeCollectionFromFirestore<ChatMessage>('chat_messages', uid, setChatMessages));
+          } catch (e) {
+            console.warn('Subscription notice:', e);
+          }
+        } else {
+          // Explicitly logged out: Clear all store state to empty array
+          setCurrentUser(null);
+          setProducts([]);
+          setSales([]);
+          setInstallments([]);
+          setReturns([]);
+          setSuppliers([]);
+          setPurchases([]);
+          setRepairs([]);
+          setExpenses([]);
+          setCustomerProfiles([]);
+          setDevices([]);
+          setUsedBuys([]);
+          setStaff([]);
+          setAccounts([]);
+          setJournalEntries([]);
+          setSmsLogs([]);
+          setChatMessages([]);
+          setSettings(DEFAULT_SETTINGS);
+          setCart([]);
+          setDeviceCredits(0);
+        }
       }
     });
 
@@ -575,7 +612,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const now = new Date();
     const invoiceNumber = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(sales.length + 1).padStart(4, '0')}`;
-    const currentOwnerId = user?.uid || 'default_store_owner';
+    const currentOwnerId = user?.uid || currentUser?.id || 'default_store_owner';
 
     // Prepare Sale Items safely
     const items = cart.map(item => {

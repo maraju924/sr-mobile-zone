@@ -10,26 +10,99 @@
   }
 }
 
-/* Print specific styles for Receipts and Invoices */
+/* Print specific styles for Receipts, Invoices, Barcodes, and Statements */
 @media print {
-  body * {
-    visibility: hidden;
-  }
-  #printable-invoice, #printable-invoice * {
-    visibility: visible;
-  }
-  #printable-invoice {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 10px;
-    background: white;
-    color: black;
-  }
-  .no-print {
+  /* Hide unwanted UI elements across the app */
+  .no-print,
+  .print\:hidden,
+  button:not(.allow-print) {
     display: none !important;
+  }
+
+  .print\:block {
+    display: block !important;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* Reset modal fixed backdrops so browser can paginate and not clip to viewport */
+  .fixed.inset-0.z-50 {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .fixed.inset-0.z-50 > div {
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Support for invoice modal */
+  #printable-invoice {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 10px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Support for barcode sheet modal */
+  #barcode-sheet-print-container,
+  #barcode-sheet-print-container * {
+    visibility: visible !important;
+  }
+
+  #barcode-sheet-print-container {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  /* Money Receipt modal */
+  #money-receipt-print {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 10px !important;
+  }
+
+  /* Passbook, Ledger and Reports */
+  #printable-passbook,
+  #customer-ledger-print,
+  #report-printable-area,
+  .print-modal-container {
+    display: block !important;
+    visibility: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
   }
 }
 

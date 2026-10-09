@@ -342,10 +342,189 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
     }
   };
 
-  // Direct Print Execution
+  // Direct Print Execution using isolated print iframe with fallback
   const handlePrint = (singleTest: boolean = false) => {
-    // If singleTest, temporarily we just print
-    window.print();
+    try {
+      // 1. Target the live preview grid where all barcodes and labels are already rendered
+      const liveGrid = document.getElementById('barcode-live-render-grid');
+      if (!liveGrid) {
+        window.print();
+        return;
+      }
+
+      // 2. Clone the live rendered stickers to capture all SVG and DOM elements
+      const clonedGrid = liveGrid.cloneNode(true) as HTMLElement;
+
+      // Handle any QR code canvas elements by converting them to data URL images
+      const originalCanvases = liveGrid.querySelectorAll('canvas');
+      const clonedCanvases = clonedGrid.querySelectorAll('canvas');
+      originalCanvases.forEach((orig, idx) => {
+        const cloned = clonedCanvases[idx];
+        if (cloned) {
+          try {
+            const img = document.createElement('img');
+            img.src = orig.toDataURL('image/png');
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.style.display = 'block';
+            cloned.parentNode?.replaceChild(img, cloned);
+          } catch (e) {
+            console.warn('Canvas conversion note:', e);
+          }
+        }
+      });
+
+      // 3. Determine exact page and layout specifications
+      const isThermal = activePreset.isThermalRoll;
+      const isSingleRoll = isThermal && activePreset.columns === 1;
+
+      const pageWidth = isSingleRoll
+        ? `${activePreset.widthMm}mm`
+        : isThermal
+        ? `${activePreset.widthMm * activePreset.columns + (activePreset.gapMm * (activePreset.columns - 1))}mm`
+        : '210mm';
+
+      const pageHeight = isThermal
+        ? `${activePreset.heightMm}mm`
+        : '297mm';
+
+      const pageMargin = isThermal ? '0mm' : '4mm';
+
+      // 4. Create or reuse isolated printing iframe
+      const iframeId = 'barcode-studio-print-frame';
+      let iframe = document.getElementById(iframeId) as HTMLIFrameElement | null;
+      if (iframe) {
+        iframe.remove();
+      }
+
+      iframe = document.createElement('iframe');
+      iframe.id = iframeId;
+      iframe.setAttribute('style', 'position:fixed;top:0;left:0;width:0;height:0;border:0;visibility:hidden;z-index:-9999;');
+      document.body.appendChild(iframe);
+
+      const frameDoc = iframe.contentWindow?.document;
+      if (!frameDoc) {
+        window.print();
+        return;
+      }
+
+      // Collect styles from main page head to preserve fonts and classes
+      const headStyles = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+        .map(el => el.outerHTML)
+        .join('\n');
+
+      const printHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>${settings.storeName} - ${activePreset.nameBn || activePreset.name}</title>
+            ${headStyles}
+            <style>
+              @page {
+                size: ${pageWidth} ${pageHeight};
+                margin: ${pageMargin};
+              }
+              *, *::before, *::after {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+              }
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hind Siliguri", sans-serif;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              .print-grid-container {
+                display: grid !important;
+                grid-template-columns: repeat(${activePreset.columns}, ${activePreset.widthMm}mm) !important;
+                gap: ${activePreset.gapMm}mm !important;
+                justify-content: ${activePreset.columns === 1 ? 'center' : 'start'} !important;
+                align-content: start !important;
+                width: 100% !important;
+                margin: 0 auto !important;
+                padding: 0 !important;
+              }
+              .barcode-sticker-cell {
+                width: ${activePreset.widthMm}mm !important;
+                height: ${activePreset.heightMm}mm !important;
+                box-sizing: border-box !important;
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+                justify-content: space-between !important;
+                text-align: center !important;
+                overflow: hidden !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+                ${isSingleRoll ? 'page-break-after: always !important; break-after: page !important;' : ''}
+                border: ${showCutGuide ? '0.5px dashed #666666' : '0.5px solid transparent'} !important;
+                padding: ${activePreset.heightMm <= 25 ? '1mm 0.8mm' : '1.5mm 1mm'} !important;
+              }
+              svg {
+                display: block !important;
+                margin: 0 auto !important;
+                max-width: 100% !important;
+                height: auto !important;
+              }
+              img {
+                display: block !important;
+                margin: 0 auto !important;
+                max-width: 100% !important;
+                height: auto !important;
+              }
+              /* Fail-safe typography & layout classes */
+              .flex { display: flex !important; }
+              .flex-col { flex-direction: column !important; }
+              .items-center { align-items: center !important; }
+              .justify-between { justify-content: space-between !important; }
+              .justify-center { justify-content: center !important; }
+              .text-center { text-align: center !important; }
+              .text-left { text-align: left !important; }
+              .text-right { text-align: right !important; }
+              .w-full { width: 100% !important; }
+              .shrink-0 { flex-shrink: 0 !important; }
+              .truncate { overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important; }
+              .font-bold { font-weight: 700 !important; }
+              .font-black { font-weight: 900 !important; }
+              .font-mono { font-family: monospace, monospace !important; }
+              .uppercase { text-transform: uppercase !important; }
+              .border-t { border-top: 0.5px solid #000000 !important; }
+              .leading-tight { line-height: 1.15 !important; }
+              .overflow-hidden { overflow: hidden !important; }
+            </style>
+          </head>
+          <body>
+            <div class="print-grid-container">
+              ${clonedGrid.innerHTML}
+            </div>
+          </body>
+        </html>
+      `;
+
+      frameDoc.open();
+      frameDoc.write(printHtml);
+      frameDoc.close();
+
+      setTimeout(() => {
+        try {
+          iframe?.contentWindow?.focus();
+          iframe?.contentWindow?.print();
+        } catch (e) {
+          console.warn('Iframe print error, falling back to window.print', e);
+          window.print();
+        }
+      }, 250);
+    } catch (err) {
+      console.error('Label print preparation error:', err);
+      window.print();
+    }
   };
 
   // Secret cost code generator (e.g., purchase price 1200 -> C-1200 or custom cipher)
@@ -356,7 +535,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-2 sm:p-4 overflow-hidden animate-in fade-in">
+    <div className="barcode-modal-root fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-2 sm:p-4 overflow-hidden animate-in fade-in">
       
       {/* Dynamic Print CSS for Thermal and A4 */}
       <style dangerouslySetInnerHTML={{ __html: `
@@ -369,22 +548,46 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
               : 'A4 portrait'};
             margin: ${activePreset.isThermalRoll ? '0mm' : '4mm'};
           }
-          body {
+          html, body {
             margin: 0 !important;
             padding: 0 !important;
             background: #ffffff !important;
+            color: #000000 !important;
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
+            overflow: visible !important;
+            height: auto !important;
+          }
+          /* Reset modal container so it does not clip */
+          .barcode-modal-root {
+            position: static !important;
+            background: transparent !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            overflow: visible !important;
+          }
+          .barcode-modal-root > div {
+            max-width: 100% !important;
+            height: auto !important;
+            max-height: none !important;
+            border: none !important;
+            box-shadow: none !important;
+            overflow: visible !important;
           }
           /* Hide all app chrome during print */
-          .print\\:hidden {
+          .print\\:hidden,
+          .no-print {
             display: none !important;
           }
           #barcode-sheet-print-container {
             display: block !important;
+            visibility: visible !important;
             padding: 0 !important;
             margin: 0 !important;
             width: 100% !important;
+          }
+          #barcode-sheet-print-container * {
+            visibility: visible !important;
           }
           .barcode-sticker-cell {
             page-break-inside: avoid !important;
@@ -392,6 +595,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
             ${activePreset.isThermalRoll && activePreset.columns === 1 ? 'page-break-after: always !important; break-after: page !important;' : ''}
             border-color: ${showCutGuide ? '#666666' : 'transparent'} !important;
             box-shadow: none !important;
+            visibility: visible !important;
           }
         }
       `}} />
@@ -1030,7 +1234,7 @@ export const BarcodeSheetModal: React.FC<BarcodeSheetModalProps> = ({
               >
                 {/* Print Sheet Grid */}
                 <div 
-                  id="barcode-sheet-print-container"
+                  id="barcode-live-render-grid"
                   className="grid"
                   style={{
                     gridTemplateColumns: `repeat(${activePreset.columns}, minmax(0, 1fr))`,
