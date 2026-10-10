@@ -774,7 +774,7 @@ export const RepairManager: React.FC = () => {
             </div>
 
             {/* Printable Content */}
-            <div className="p-6 sm:p-8 text-slate-800 space-y-6 text-xs">
+            <div id="repair-jobcard-print" className="p-6 sm:p-8 text-slate-800 space-y-6 text-xs bg-white">
               
               {/* Header */}
               <div className="text-center border-b pb-4 border-slate-300 border-dashed">

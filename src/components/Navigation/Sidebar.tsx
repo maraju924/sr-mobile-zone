@@ -196,7 +196,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       <aside className={`
         fixed lg:static top-0 bottom-0 left-0 z-50
         w-64 bg-slate-900 border-r border-slate-800 text-slate-300
-        flex flex-col select-none transition-transform duration-200 ease-in-out
+        flex flex-col select-none transition-transform duration-200 ease-in-out print:hidden
         ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         {/* Sidebar Header */}

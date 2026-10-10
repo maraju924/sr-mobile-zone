@@ -81,7 +81,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
   };
 
   return (
-    <header className="h-14 bg-slate-900 text-white flex items-center justify-between px-3 sm:px-4 border-b border-slate-800 shrink-0 z-30 select-none shadow-md">
+    <header className="h-14 bg-slate-900 text-white flex items-center justify-between px-3 sm:px-4 border-b border-slate-800 shrink-0 z-30 select-none shadow-md print:hidden">
       {/* Left: Hamburger, Tenant & Page Title */}
       <div className="flex items-center gap-3">
         <button

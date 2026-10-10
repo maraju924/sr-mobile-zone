@@ -62,7 +62,7 @@ export const BottomTabs: React.FC<BottomTabsProps> = ({ onOpenMenu }) => {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 h-[60px] pb-[max(0.25rem,env(safe-area-inset-bottom))] bg-slate-900/98 backdrop-blur-md border-t border-slate-800 text-slate-400 flex items-center justify-around z-30 select-none lg:hidden px-1 shadow-2xl">
+    <nav className="fixed bottom-0 left-0 right-0 h-[60px] pb-[max(0.25rem,env(safe-area-inset-bottom))] bg-slate-900/98 backdrop-blur-md border-t border-slate-800 text-slate-400 flex items-center justify-around z-30 select-none lg:hidden px-1 shadow-2xl print:hidden">
       {tabs.map(item => {
         const Icon = item.icon;
         const isActive = !item.isMenu && activeTab === item.tab;

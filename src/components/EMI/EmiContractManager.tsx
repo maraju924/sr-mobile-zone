@@ -41,7 +41,7 @@ export const EmiContractManager: React.FC = () => {
     <div className="flex-1 overflow-y-auto p-3 sm:p-5 pb-24 sm:pb-8 bg-slate-100 text-slate-800 space-y-4">
       
       {/* Top Banner Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
         <div>
           <div className="flex items-center gap-2">
             <h1 className="font-extrabold text-lg sm:text-xl text-slate-900 flex items-center gap-2">
@@ -74,7 +74,7 @@ export const EmiContractManager: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         
         {/* Left Column: Contracts List (5 cols) */}
-        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-3 flex flex-col max-h-[75vh]">
+        <div className="lg:col-span-5 bg-white rounded-2xl border border-slate-200 shadow-xs p-4 space-y-3 flex flex-col max-h-[75vh] print:hidden">
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
@@ -138,7 +138,7 @@ export const EmiContractManager: React.FC = () => {
 
         {/* Right Column: Selected Contract Details & Schedule (7 cols) */}
         {selectedContract ? (
-          <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4">
+          <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 shadow-xs p-5 space-y-4 print:w-full print:col-span-12 print:border-none print:shadow-none print:p-0">
             
             {/* Header info */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-200 gap-2">

@@ -80,7 +80,8 @@ const AppContent: React.FC = () => {
     currentUser,
     authLogin,
     lang,
-    setLang
+    setLang,
+    lastMoneyReceipt
   } = useApp();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -101,7 +102,7 @@ const AppContent: React.FC = () => {
       <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
 
       {/* Main Screen Body with Sidebar & Dynamic View */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className={`flex-1 flex overflow-hidden ${(showInvoiceModal || !!lastMoneyReceipt) ? 'print:hidden' : ''}`}>
         {/* Sidebar */}
         <Sidebar 
           isOpen={isSidebarOpen} 

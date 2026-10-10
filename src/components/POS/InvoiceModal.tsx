@@ -97,11 +97,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
         </div>
 
         {/* Invoice Printable View (Scrollable) */}
-        <div className="p-3 sm:p-8 overflow-y-auto flex-1 bg-slate-50/50">
+        <div className="p-3 sm:p-8 overflow-y-auto flex-1 bg-slate-50/50 print:p-0 print:bg-white print:overflow-visible">
           
           <div 
             id="printable-invoice" 
-            className={`mx-auto bg-white p-6 sm:p-8 rounded-xl shadow-xs border border-slate-200 transition-all ${
+            className={`mx-auto bg-white p-6 sm:p-8 rounded-xl shadow-xs border border-slate-200 transition-all print:border-none print:shadow-none print:p-0 ${
               printFormat === 'thermal' ? 'max-w-[340px] text-xs font-mono p-4' : 'max-w-2xl'
             }`}
           >
