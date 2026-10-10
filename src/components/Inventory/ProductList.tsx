@@ -15,6 +15,7 @@ import {
   Package, 
   ArrowUpDown, 
   Tag,
+  Tags,
   Download,
   FileSpreadsheet,
   CheckSquare,
@@ -29,7 +30,19 @@ import { ReportExportModal } from '../Reports/ReportExportModal';
 import { BarcodeScannerModal } from '../POS/BarcodeScannerModal';
 
 export const ProductList: React.FC = () => {
-  const { products, addProduct, updateProduct, deleteProduct, formatCurrency, exportToCsv, settings, t } = useApp();
+  const { 
+    products, 
+    categories: appCategories, 
+    addCategory, 
+    addProduct, 
+    updateProduct, 
+    deleteProduct, 
+    formatCurrency, 
+    exportToCsv, 
+    settings, 
+    setActiveTab, 
+    t 
+  } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -64,10 +77,34 @@ export const ProductList: React.FC = () => {
   const [formSerials, setFormSerials] = useState<string[]>([]);
   const [serialInputText, setSerialInputText] = useState('');
 
+  // Quick Add Category State
+  const [isQuickAddCategoryOpen, setIsQuickAddCategoryOpen] = useState(false);
+  const [quickCategoryName, setQuickCategoryName] = useState('');
+
+  // All category names from custom categories and any product categories
+  const allCategoryNames = useMemo(() => {
+    const fromApp = (appCategories || []).map(c => c.name.trim()).filter(Boolean);
+    const fromProducts = products.map(p => (p.category || '').trim()).filter(Boolean);
+    const combined = Array.from(new Set([...fromApp, ...fromProducts]));
+    return combined.length > 0 ? combined : ['স্মার্টফোন', 'ফিচার ফোন', 'অন্যান্য'];
+  }, [appCategories, products]);
+
   const categories = useMemo(() => {
-    const list = Array.from(new Set(products.map(p => p.category)));
-    return ['all', ...list];
-  }, [products]);
+    return ['all', ...allCategoryNames];
+  }, [allCategoryNames]);
+
+  const handleQuickAddCategory = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!quickCategoryName.trim()) return;
+    const catName = quickCategoryName.trim();
+    addCategory({
+      name: catName,
+      color: 'indigo',
+    });
+    setFormCategory(catName);
+    setQuickCategoryName('');
+    setIsQuickAddCategoryOpen(false);
+  };
 
   // Filtered Products
   const filteredProducts = useMemo(() => {
@@ -96,7 +133,7 @@ export const ProductList: React.FC = () => {
     setEditingProduct(null);
     setFormName('');
     setFormBrand('');
-    setFormCategory('স্মার্টফোন');
+    setFormCategory(allCategoryNames[0] || 'স্মার্টফোন');
     setFormBarcode(Math.floor(100000000000 + Math.random() * 900000000000).toString());
     setFormPurchasePrice(0);
     setFormSellingPrice(0);
@@ -232,6 +269,14 @@ export const ProductList: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('categories')}
+              className="flex items-center gap-1.5 px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-xs font-semibold shadow-xs transition"
+              title="ক্যাটাগরি তৈরি ও ব্যবস্থাপনা সেকশন"
+            >
+              <Tags className="w-4 h-4 text-indigo-600" />
+              <span>{t('ক্যাটাগরি সমূহ', 'Categories')}</span>
+            </button>
             <button
               onClick={() => {
                 setSelectedProductForBarcode(null);
@@ -560,23 +605,65 @@ export const ProductList: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t('ক্যাটাগরি', 'Category')}
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      {t('ক্যাটাগরি *', 'Category *')}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickAddCategoryOpen(!isQuickAddCategoryOpen)}
+                      className="text-[11px] text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-0.5"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>{t('+ নতুন', '+ New')}</span>
+                    </button>
+                  </div>
                   <select
                     value={formCategory}
                     onChange={(e) => setFormCategory(e.target.value)}
-                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 font-medium"
+                    className="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 font-medium bg-white"
                   >
-                    <option value="স্মার্টফোন">স্মার্টফোন (Smartphones)</option>
-                    <option value="ল্যাপটপ ও কম্পিউটার">ল্যাপটপ ও কম্পিউটার (Laptops & PC)</option>
-                    <option value="টেলিভিশন">টেলিভিশন (TV & Displays)</option>
-                    <option value="এসি ও রেফ্রিজারেটর">এসি ও রেফ্রিজারেটর (AC & Fridge)</option>
-                    <option value="হোম অ্যাপ্লায়েন্স">হোম অ্যাপ্লায়েন্স (Home Appliances)</option>
-                    <option value="অডিও ও সাউন্ড">অডিও ও সাউন্ড (Audio & Sound)</option>
-                    <option value="এক্সেসরিজ">এক্সেসরিজ (Accessories)</option>
-                    <option value="অন্যান্য">অন্যান্য (Other)</option>
+                    {allCategoryNames.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
                   </select>
+
+                  {/* Inline Quick Add Category Input */}
+                  {isQuickAddCategoryOpen && (
+                    <div className="mt-2 p-2 bg-indigo-50 border border-indigo-200 rounded-xl flex items-center gap-1.5 animate-fadeIn">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={quickCategoryName}
+                        onChange={(e) => setQuickCategoryName(e.target.value)}
+                        placeholder={t('নতুন ক্যাটাগরির নাম...', 'New category name...')}
+                        className="flex-1 px-2.5 py-1 text-xs bg-white border border-indigo-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleQuickAddCategory();
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleQuickAddCategory}
+                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold"
+                      >
+                        {t('যোগ', 'Add')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsQuickAddCategoryOpen(false);
+                          setQuickCategoryName('');
+                        }}
+                        className="p-1 text-slate-400 hover:text-slate-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

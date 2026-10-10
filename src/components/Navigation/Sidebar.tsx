@@ -25,6 +25,7 @@ import {
   FileCheck,
   CreditCard,
   Send,
+  Tags,
   X,
   LogOut
 } from 'lucide-react';
@@ -125,6 +126,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       icon: Package,
       items: [
         { id: 'inventory', tab: 'inventory', label: 'Inventory & Barcodes', labelBn: 'ইনভেন্টরি ও বারকোড', icon: Package },
+        { id: 'categories', tab: 'categories', label: 'Categories', labelBn: 'ক্যাটাগরি সমূহ', icon: Tags },
         { id: 'warranty', tab: 'warranty', label: 'Warranty & Claims', labelBn: 'ওয়ারেন্টি ও ক্লেইম', icon: ShieldAlert }
       ]
     },

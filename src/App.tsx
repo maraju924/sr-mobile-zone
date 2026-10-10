@@ -13,6 +13,7 @@ import { DeviceList } from './components/Locker/DeviceList';
 import { LiveWall } from './components/Locker/LiveWall';
 import { PosTerminal } from './components/POS/PosTerminal';
 import { ProductList } from './components/Inventory/ProductList';
+import { CategoryManager } from './components/Inventory/CategoryManager';
 import { SalesHistory } from './components/Sales/SalesHistory';
 import { EmiContractManager } from './components/EMI/EmiContractManager';
 import { InstallmentDueManager } from './components/Installments/InstallmentDueManager';
@@ -124,6 +125,7 @@ const AppContent: React.FC = () => {
           {activeTab === 'installments' && <InstallmentDueManager />}
           {activeTab === 'customers' && <CustomerManager />}
           {activeTab === 'inventory' && <ProductList />}
+          {activeTab === 'categories' && <CategoryManager />}
           {activeTab === 'usedbuy' && <UsedBuyManager />}
           {activeTab === 'suppliers' && <SupplierManager />}
           {activeTab === 'repairs' && <RepairManager />}

@@ -19,7 +19,8 @@ import {
   Wrench,
   Sparkles,
   LogOut,
-  Barcode
+  Barcode,
+  Tags
 } from 'lucide-react';
 import { Branch } from '../../types';
 import { UniversalScannerModal } from '../Common/UniversalScannerModal';
@@ -224,6 +225,13 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               >
                 <Wrench className="w-4 h-4 text-blue-600" />
                 <span>New Repair Job (মেরামত সার্ভিস)</span>
+              </button>
+              <button
+                onClick={() => { setActiveTab('categories'); setShowQuickCreate(false); }}
+                className="w-full text-left px-3 py-2 hover:bg-indigo-50 flex items-center gap-2.5 text-slate-700"
+              >
+                <Tags className="w-4 h-4 text-rose-600" />
+                <span>Categories (ক্যাটাগরি সমূহ)</span>
               </button>
             </div>
           )}

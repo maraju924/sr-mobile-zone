@@ -52,6 +52,23 @@ service cloud.firestore {
       allow delete: if isSignedIn() && isValidId(productId) && existing().ownerId == request.auth.uid;
     }
 
+    // Category Validator
+    function isValidCategory(data) {
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100;
+    }
+
+    match /categories/{categoryId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(categoryId) && isValidCategory(incoming()) &&
+                       incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() && isValidId(categoryId) && isValidCategory(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(categoryId) && existing().ownerId == request.auth.uid;
+    }
+
     // Sale Validator
     function isValidSale(data) {
       return data.ownerId is string && data.ownerId == request.auth.uid &&

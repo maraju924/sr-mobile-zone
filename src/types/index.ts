@@ -16,6 +16,18 @@ export interface Product {
   updatedAt?: string;
 }
 
+export interface ProductCategory {
+  id: string;
+  ownerId?: string;
+  name: string;
+  nameEn?: string;
+  description?: string;
+  color?: string;
+  icon?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
 export interface CartItem {
   product: Product;
   quantity: number;
@@ -319,6 +331,7 @@ export type ActiveTab =
   | 'installments'
   | 'sales' 
   | 'inventory' 
+  | 'categories'
   | 'usedbuy' 
   | 'suppliers' 
   | 'repairs' 

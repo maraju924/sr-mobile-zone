@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { 
   Product, 
+  ProductCategory,
   Sale, 
   Installment, 
   ReturnClaim, 
@@ -68,6 +69,7 @@ export interface ParkedCart {
 
 interface AppContextType {
   products: Product[];
+  categories: ProductCategory[];
   sales: Sale[];
   installments: Installment[];
   returns: ReturnClaim[];
@@ -143,6 +145,11 @@ interface AppContextType {
   addProduct: (productData: Omit<Product, 'id' | 'ownerId' | 'createdAt'>) => void;
   updateProduct: (id: string, updates: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
+
+  // Categories
+  addCategory: (categoryData: Omit<ProductCategory, 'id' | 'ownerId' | 'createdAt'>) => ProductCategory;
+  updateCategory: (id: string, updates: Partial<ProductCategory>, updateProductReferences?: boolean) => void;
+  deleteCategory: (id: string, fallbackCategoryName?: string) => { success: boolean; message: string };
 
   // Suppliers & Purchases
   addSupplier: (supplierData: Omit<Supplier, 'id' | 'ownerId' | 'createdAt' | 'balanceDue' | 'totalPurchased' | 'totalPaid'>) => void;
@@ -284,6 +291,19 @@ interface AppContextType {
   loginStaff: (phoneOrUsername: string, pin: string) => Promise<{ success: boolean; message: string }>;
 }
 
+export const DEFAULT_PRODUCT_CATEGORIES: ProductCategory[] = [
+  { id: 'cat_smartphones', name: 'স্মার্টফোন', nameEn: 'Smartphones', description: 'স্মার্টফোন ও ফোল্ডেবল হ্যান্ডসেট', color: 'indigo', icon: 'smartphone', createdAt: '2025-01-01T00:00:00.000Z' },
+  { id: 'cat_featurephones', name: 'ফিচার ফোন', nameEn: 'Feature Phones', description: 'বাটন ও সাধারণ ফিচার ফোন', color: 'blue', icon: 'phone', createdAt: '2025-01-01T00:00:00.000Z' },
+  { id: 'cat_usedphones', name: 'ব্যবহৃত স্মার্টফোন (Pre-owned)', nameEn: 'Used Smartphones', description: 'সেকেন্ড হ্যান্ড ও প্রি-ওউনড স্মার্টফোন', color: 'amber', icon: 'repeat', createdAt: '2025-01-01T00:00:00.000Z' },
+  { id: 'cat_laptops', name: 'ল্যাপটপ ও কম্পিউটার', nameEn: 'Laptops & PC', description: 'ল্যাপটপ, ডেক্সটপ ও কম্পিউটার যন্ত্রাংশ', color: 'purple', icon: 'laptop', createdAt: '2025-01-01T00:00:00.000Z' },
+  { id: 'cat_tv', name: 'টেলিভিশন', nameEn: 'TV & Displays', description: 'স্মার্ট টিভি, এলইডি ও মনিটর', color: 'cyan', icon: 'tv', createdAt: '2025-01-01T00:00:00.000Z' },
+  { id: 'cat_acfridge', name: 'এসি ও রেফ্রিজারেটর', nameEn: 'AC & Fridge', description: 'ইনভার্টার এসি ও ফ্রিজ', color: 'sky', icon: 'snowflake', createdAt: '2025-01-01T00:00:00.000Z' },
+  { id: 'cat_homeapp', name: 'হোম অ্যাপ্লায়েন্স', nameEn: 'Home Appliances', description: 'মাইক্রোওভেন, ব্লেন্ডার ও গৃহস্থালি পণ্য', color: 'emerald', icon: 'home', createdAt: '2025-01-01T00:00:00.000Z' },
+  { id: 'cat_audio', name: 'অডিও ও সাউন্ড', nameEn: 'Audio & Sound', description: 'হেডফোন, ইয়ারবাডস ও ব্লুটুথ সাউন্ডবক্স', color: 'rose', icon: 'headphones', createdAt: '2025-01-01T00:00:00.000Z' },
+  { id: 'cat_accessories', name: 'এক্সেসরিজ', nameEn: 'Accessories', description: 'চার্জার, ক্যাবল, ব্যাককভার ও স্ক্রিন প্রটেক্টর', color: 'orange', icon: 'cable', createdAt: '2025-01-01T00:00:00.000Z' },
+  { id: 'cat_other', name: 'অন্যান্য', nameEn: 'Other', description: 'বিবিধ ইলেকট্রনিক পণ্য ও গ্যাজেটস', color: 'slate', icon: 'package', createdAt: '2025-01-01T00:00:00.000Z' },
+];
+
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
@@ -305,6 +325,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const activeEmail = (currentUser?.email || user?.email || '').toLowerCase().trim() || null;
 
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<ProductCategory[]>(() => {
+    try {
+      const saved = loadFromLocal<ProductCategory[]>(STORAGE_KEYS.CATEGORIES, []);
+      if (saved && saved.length > 0) return saved;
+    } catch (e) {
+      console.warn('Failed to load categories', e);
+    }
+    return DEFAULT_PRODUCT_CATEGORIES;
+  });
   const [sales, setSales] = useState<Sale[]>([]);
   const [installments, setInstallments] = useState<Installment[]>([]);
   const [returns, setReturns] = useState<ReturnClaim[]>([]);
@@ -411,6 +440,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         // Real-time Firestore subscriptions - 100% pure cloud data, strictly partitioned by uid
         subscriptions.push(subscribeCollectionFromFirestore<Product>('products', uid, setProducts));
+        subscriptions.push(subscribeCollectionFromFirestore<ProductCategory>('categories', uid, (remoteCategories) => {
+          if (remoteCategories && remoteCategories.length > 0) {
+            setCategories(remoteCategories);
+            saveToLocal(STORAGE_KEYS.CATEGORIES, remoteCategories);
+          }
+        }));
         subscriptions.push(subscribeCollectionFromFirestore<Sale>('sales', uid, setSales));
         subscriptions.push(subscribeCollectionFromFirestore<Installment>('installments', uid, setInstallments));
         subscriptions.push(subscribeCollectionFromFirestore<ReturnClaim>('returns', uid, setReturns));
@@ -444,6 +479,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           // Subscribe Firestore collections if online/authenticated
           try {
             subscriptions.push(subscribeCollectionFromFirestore<Product>('products', uid, setProducts));
+            subscriptions.push(subscribeCollectionFromFirestore<ProductCategory>('categories', uid, (remoteCategories) => {
+              if (remoteCategories && remoteCategories.length > 0) {
+                setCategories(remoteCategories);
+                saveToLocal(STORAGE_KEYS.CATEGORIES, remoteCategories);
+              }
+            }));
             subscriptions.push(subscribeCollectionFromFirestore<Sale>('sales', uid, setSales));
             subscriptions.push(subscribeCollectionFromFirestore<Installment>('installments', uid, setInstallments));
             subscriptions.push(subscribeCollectionFromFirestore<ReturnClaim>('returns', uid, setReturns));
@@ -906,6 +947,131 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const deleteProduct = (id: string) => {
     setProducts(prev => prev.filter(p => p.id !== id));
     deleteDocFromFirestore('products', id);
+  };
+
+  // Auto-sync categories with products so previous categories and product categories always exist
+  useEffect(() => {
+    if (products.length > 0) {
+      const existingNames = new Set(categories.map(c => c.name.trim().toLowerCase()));
+      const missing: ProductCategory[] = [];
+      const ownerId = user?.uid || currentUser?.id || 'default_store_owner';
+
+      products.forEach(p => {
+        if (p.category && p.category.trim() && !existingNames.has(p.category.trim().toLowerCase())) {
+          existingNames.add(p.category.trim().toLowerCase());
+          const newCat: ProductCategory = {
+            id: `cat_auto_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            ownerId,
+            name: p.category.trim(),
+            nameEn: p.category.trim(),
+            description: 'ইনভেন্টরি থেকে সমন্বিত ক্যাটাগরি',
+            color: 'blue',
+            createdAt: new Date().toISOString()
+          };
+          missing.push(newCat);
+        }
+      });
+
+      if (missing.length > 0) {
+        setCategories(prev => {
+          const next = [...prev, ...missing];
+          saveToLocal(STORAGE_KEYS.CATEGORIES, next);
+          return next;
+        });
+        if (ownerId) {
+          missing.forEach(cat => saveDocToFirestore('categories', cat, ownerId));
+        }
+      }
+    }
+  }, [products]);
+
+  // Categories CRUD
+  const addCategory = (categoryData: Omit<ProductCategory, 'id' | 'ownerId' | 'createdAt'>): ProductCategory => {
+    const ownerId = user?.uid || currentUser?.id || 'default_store_owner';
+    const newCat: ProductCategory = {
+      ...categoryData,
+      id: `cat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      ownerId,
+      createdAt: new Date().toISOString()
+    };
+    setCategories(prev => {
+      const next = [newCat, ...prev];
+      saveToLocal(STORAGE_KEYS.CATEGORIES, next);
+      return next;
+    });
+    if (ownerId) {
+      saveDocToFirestore('categories', newCat, ownerId);
+    }
+    return newCat;
+  };
+
+  const updateCategory = (id: string, updates: Partial<ProductCategory>, updateProductReferences: boolean = true) => {
+    const ownerId = user?.uid || currentUser?.id;
+    let oldName = '';
+    
+    setCategories(prev => {
+      const updated = prev.map(c => {
+        if (c.id === id) {
+          oldName = c.name;
+          const next = { ...c, ...updates, updatedAt: new Date().toISOString() };
+          if (ownerId) saveDocToFirestore('categories', next, ownerId);
+          return next;
+        }
+        return c;
+      });
+      saveToLocal(STORAGE_KEYS.CATEGORIES, updated);
+      return updated;
+    });
+
+    // If category name was renamed, propagate to all products using the old name
+    if (updateProductReferences && updates.name && oldName && updates.name.trim() !== oldName.trim()) {
+      const newName = updates.name.trim();
+      setProducts(prev => {
+        return prev.map(p => {
+          if (p.category === oldName) {
+            const updatedProd = { ...p, category: newName, updatedAt: new Date().toISOString() };
+            if (ownerId) saveDocToFirestore('products', updatedProd, ownerId);
+            return updatedProd;
+          }
+          return p;
+        });
+      });
+    }
+  };
+
+  const deleteCategory = (id: string, fallbackCategoryName: string = 'অন্যান্য'): { success: boolean; message: string } => {
+    const target = categories.find(c => c.id === id);
+    if (!target) return { success: false, message: 'ক্যাটাগরি খুঁজে পাওয়া যায়নি!' };
+
+    const ownerId = user?.uid || currentUser?.id;
+    const affectedProducts = products.filter(p => p.category === target.name);
+
+    if (affectedProducts.length > 0) {
+      setProducts(prev => {
+        return prev.map(p => {
+          if (p.category === target.name) {
+            const updatedProd = { ...p, category: fallbackCategoryName, updatedAt: new Date().toISOString() };
+            if (ownerId) saveDocToFirestore('products', updatedProd, ownerId);
+            return updatedProd;
+          }
+          return p;
+        });
+      });
+    }
+
+    setCategories(prev => {
+      const next = prev.filter(c => c.id !== id);
+      saveToLocal(STORAGE_KEYS.CATEGORIES, next);
+      return next;
+    });
+    deleteDocFromFirestore('categories', id);
+
+    return {
+      success: true,
+      message: affectedProducts.length > 0
+        ? `ক্যাটাগরি মুছে ফেলা হয়েছে এবং এর ${affectedProducts.length} টি পণ্য "${fallbackCategoryName}" এ স্থানান্তর করা হয়েছে।`
+        : 'ক্যাটাগরি সফলভাবে মুছে ফেলা হয়েছে।'
+    };
   };
 
   // Installment schedule payment - Direct Firebase Firestore Persistence
@@ -1765,6 +1931,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ownerId: user?.uid || currentUser?.id,
       data: {
         products,
+        categories,
         sales,
         installments,
         returns,
@@ -1806,6 +1973,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Directly persist loaded records into Firebase Firestore scoped to active ownerId
       if (Array.isArray(data.products)) {
         data.products.forEach((p: Product) => saveDocToFirestore('products', { ...p, ownerId }, ownerId));
+      }
+      if (Array.isArray(data.categories)) {
+        data.categories.forEach((c: ProductCategory) => saveDocToFirestore('categories', { ...c, ownerId }, ownerId));
       }
       if (Array.isArray(data.sales)) {
         data.sales.forEach((s: Sale) => saveDocToFirestore('sales', { ...s, ownerId }, ownerId));
@@ -2339,6 +2509,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   return (
     <AppContext.Provider value={{
       products,
+      categories,
       sales,
       installments,
       returns,
@@ -2413,6 +2584,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       addProduct,
       updateProduct,
       deleteProduct,
+      addCategory,
+      updateCategory,
+      deleteCategory,
       addSupplier,
       updateSupplier,
       deleteSupplier,

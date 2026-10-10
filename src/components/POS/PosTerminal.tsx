@@ -97,6 +97,7 @@ const playSoundEffect = (type: 'beep' | 'chime' | 'error') => {
 export const PosTerminal: React.FC = () => {
   const { 
     products, 
+    categories: appCategories,
     cart, 
     sales,
     installments,
@@ -195,9 +196,11 @@ export const PosTerminal: React.FC = () => {
 
   // Categories & Brands list
   const categories = useMemo(() => {
-    const list = Array.from(new Set(products.map(p => p.category)));
+    const fromApp = (appCategories || []).map(c => c.name.trim()).filter(Boolean);
+    const fromProducts = products.map(p => (p.category || '').trim()).filter(Boolean);
+    const list = Array.from(new Set([...fromApp, ...fromProducts]));
     return ['all', ...list];
-  }, [products]);
+  }, [appCategories, products]);
 
   const brands = useMemo(() => {
     const list = Array.from(new Set(products.map(p => p.brand).filter(Boolean)));

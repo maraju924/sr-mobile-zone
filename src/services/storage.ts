@@ -35,6 +35,7 @@ export const STORAGE_KEYS = {
   SUPPLIER_PAYMENTS: 'supplier_payments',
   REPAIRS: 'repairs',
   EXPENSES: 'expenses',
+  CATEGORIES: 'categories',
   CUSTOMER_PROFILES: 'customer_profiles',
   PENDING_SYNC: 'pending_sync',
   LANGUAGE: 'lang_pref',
