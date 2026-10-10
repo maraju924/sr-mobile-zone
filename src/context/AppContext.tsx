@@ -175,7 +175,37 @@ interface AppContextType {
   updateCustomerCreditProfile: (profile: CustomerCreditProfile) => void;
   recordInstallmentPayment: (installmentId: string, scheduleId: string, amount: number) => void;
   recordInstallmentPartialPayment: (installmentId: string, scheduleId: string, paidAmount: number, penaltyAmount?: number, note?: string) => void;
+  recordInstallmentSmartPayment: (
+    installmentId: string,
+    paidAmount: number,
+    options?: {
+      targetScheduleId?: string;
+      paymentMethod?: 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank' | 'split';
+      trxId?: string;
+      bankAccount?: string;
+      penaltyAmount?: number;
+      waivePenalty?: boolean;
+      discountAmount?: number;
+      note?: string;
+      autoUnlockLinkedDevice?: boolean;
+    }
+  ) => void;
+  reverseInstallmentPayment: (
+    installmentId: string,
+    scheduleId: string,
+    reason?: string
+  ) => void;
   collectDuePayment: (saleId: string, amount: number) => void;
+  collectDuePaymentAdvanced: (
+    saleId: string,
+    amount: number,
+    options?: {
+      paymentMethod?: 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank';
+      trxId?: string;
+      note?: string;
+      autoUnlockLinkedDevice?: boolean;
+    }
+  ) => void;
   addInstallmentFollowUp: (installmentId: string, log: Omit<FollowUpLog, 'id' | 'date'>) => void;
   addSaleFollowUp: (saleId: string, log: Omit<FollowUpLog, 'id' | 'date'>) => void;
 
@@ -1081,64 +1111,338 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     penaltyAmount: number = 0,
     note?: string
   ) => {
+    // Delegate to smart payment with targeted schedule
+    recordInstallmentSmartPayment(installmentId, paidAmount, {
+      targetScheduleId: scheduleId,
+      penaltyAmount,
+      note,
+      paymentMethod: 'cash'
+    });
+  };
+
+  // Smart Multi-Installment, Custom Amount & Foreclosure Engine
+  const recordInstallmentSmartPayment = (
+    installmentId: string,
+    paidAmount: number,
+    options?: {
+      targetScheduleId?: string;
+      paymentMethod?: 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank' | 'split';
+      trxId?: string;
+      bankAccount?: string;
+      penaltyAmount?: number;
+      waivePenalty?: boolean;
+      discountAmount?: number;
+      note?: string;
+      autoUnlockLinkedDevice?: boolean;
+    }
+  ) => {
     const ownerId = user?.uid || currentUser?.id || '';
     const now = new Date();
+    const method = options?.paymentMethod || 'cash';
+    const effectivePenalty = options?.waivePenalty ? 0 : (options?.penaltyAmount || 0);
+    const discount = Math.max(0, options?.discountAmount || 0);
     let receiptData: any = null;
+    let newlyPaidItemNumbers: number[] = [];
 
     setInstallments(prev => prev.map(inst => {
       if (inst.id !== installmentId) return inst;
 
-      const updatedSchedule = inst.schedule.map(sch => {
-        if (sch.id === scheduleId) {
-          const totalPaidSoFar = (sch.paidAmount || 0) + paidAmount;
-          const totalTarget = sch.amount + (penaltyAmount || 0);
-          const isPaid = totalPaidSoFar >= totalTarget;
-          const remainingOnInstallment = Math.max(0, totalTarget - totalPaidSoFar);
+      let remainingPaymentPool = Math.max(0, paidAmount);
+      const isTargeted = Boolean(options?.targetScheduleId);
 
-          return {
-            ...sch,
-            isPaid,
+      // Clone schedules and determine sequence
+      const updatedSchedule = inst.schedule.map(sch => ({ ...sch }));
+
+      // Order of processing: targeted item first, then remaining unpaid items in chronological order
+      const processOrder = updatedSchedule
+        .filter(s => isTargeted ? s.id === options?.targetScheduleId : !s.isPaid)
+        .concat(
+          isTargeted
+            ? updatedSchedule.filter(s => s.id !== options?.targetScheduleId && !s.isPaid)
+            : []
+        );
+
+      processOrder.forEach((sch) => {
+        if (remainingPaymentPool <= 0) return;
+
+        const isThisTarget = sch.id === options?.targetScheduleId;
+        const itemPenalty = isThisTarget ? effectivePenalty : 0;
+        const currentPaid = sch.paidAmount || 0;
+        const remainingOnThisItem = Math.max(0, (sch.amount + itemPenalty) - currentPaid);
+
+        if (remainingOnThisItem <= 0) return;
+
+        const allocate = Math.min(remainingPaymentPool, remainingOnThisItem);
+        remainingPaymentPool -= allocate;
+
+        const totalPaidSoFar = currentPaid + allocate;
+        const totalTarget = sch.amount + itemPenalty;
+        const isNowPaid = totalPaidSoFar >= totalTarget;
+
+        if (isNowPaid) {
+          newlyPaidItemNumbers.push(sch.installmentNo);
+        }
+
+        // Mutate in-place inside updatedSchedule
+        const idx = updatedSchedule.findIndex(s => s.id === sch.id);
+        if (idx >= 0) {
+          updatedSchedule[idx] = {
+            ...updatedSchedule[idx],
             paidAmount: totalPaidSoFar,
+            isPaid: isNowPaid,
             paidDate: now.toISOString(),
-            lateFee: (sch.lateFee || 0) + (penaltyAmount || 0),
-            remainingOnInstallment,
-            receiptNo: sch.receiptNo || `RC-${Date.now().toString().slice(-6)}`,
-            note: note ? (sch.note ? `${sch.note}; ${note}` : note) : sch.note
+            paymentMethod: method,
+            trxId: options?.trxId,
+            bankAccount: options?.bankAccount,
+            lateFee: (updatedSchedule[idx].lateFee || 0) + itemPenalty,
+            waivedPenalty: options?.waivePenalty && isThisTarget ? (options?.penaltyAmount || 0) : (updatedSchedule[idx].waivedPenalty || 0),
+            discountAmount: isThisTarget ? discount : (updatedSchedule[idx].discountAmount || 0),
+            receiptNo: updatedSchedule[idx].receiptNo || `RC-${Date.now().toString().slice(-6)}`,
+            note: options?.note ? (updatedSchedule[idx].note ? `${updatedSchedule[idx].note}; ${options.note}` : options.note) : updatedSchedule[idx].note
           };
         }
-        return sch;
       });
 
-      const paidCount = updatedSchedule.filter(s => s.isPaid).length;
-      const remaining = Math.max(0, inst.remainingBalance - paidAmount);
-      const isCompleted = remaining <= 0 || updatedSchedule.every(s => s.isPaid);
+      const totalPaidCount = updatedSchedule.filter(s => s.isPaid).length;
+      // Balance reduces by actual cash paid + any early closure discount applied
+      const totalBalanceReduction = paidAmount + discount;
+      const newRemainingBalance = Math.max(0, inst.remainingBalance - totalBalanceReduction);
+      const isCompleted = newRemainingBalance <= 0 || updatedSchedule.every(s => s.isPaid);
+
+      const status: 'active' | 'completed' | 'overdue' | 'foreclosed' = isCompleted
+        ? (discount > 0 ? 'foreclosed' : 'completed')
+        : 'active';
 
       receiptData = {
         receiptNo: `RC-${Date.now().toString().slice(-6)}`,
         customerName: inst.customerName,
         customerPhone: inst.customerPhone,
-        title: 'কিস্তি আদায় রশিদ (EMI Receipt)',
+        title: discount > 0 ? 'কিস্তি এককালীন ক্লোজার ও আদায় রশিদ' : 'কিস্তি আদায় রশিদ (EMI Receipt)',
         invoiceNumber: inst.invoiceNumber,
         productSummary: inst.productNameSummary,
         amount: paidAmount,
-        lateFee: penaltyAmount,
-        remainingDue: remaining,
+        lateFee: effectivePenalty,
+        waivedFee: options?.waivePenalty ? (options?.penaltyAmount || 0) : 0,
+        discount,
+        remainingDue: newRemainingBalance,
         date: now.toISOString(),
-        method: 'cash',
-        note: note || (penaltyAmount ? `জরিমানা সহ: ৳${penaltyAmount}` : undefined)
+        method,
+        trxId: options?.trxId,
+        bankAccount: options?.bankAccount,
+        paidInstallmentsSummary: newlyPaidItemNumbers.length > 0 ? `কিস্তি নং ${newlyPaidItemNumbers.join(', ')}` : undefined,
+        note: options?.note
       };
 
       const updatedInst: Installment = {
         ...inst,
-        paidCount,
-        remainingBalance: remaining,
-        totalLateFeeAccrued: (inst.totalLateFeeAccrued || 0) + penaltyAmount,
-        status: isCompleted ? 'completed' : 'active',
+        paidCount: totalPaidCount,
+        remainingBalance: newRemainingBalance,
+        totalLateFeeAccrued: (inst.totalLateFeeAccrued || 0) + effectivePenalty,
+        totalWaivedPenalty: (inst.totalWaivedPenalty || 0) + (options?.waivePenalty ? (options?.penaltyAmount || 0) : 0),
+        earlySettlementDiscount: (inst.earlySettlementDiscount || 0) + discount,
+        status,
         schedule: updatedSchedule
       };
+
       if (ownerId) saveDocToFirestore('installments', updatedInst, ownerId);
+
+      // 100% Synchronize linked Sale record
+      setSales(prevSales => prevSales.map(s => {
+        if (s.installmentId === installmentId || s.invoiceNumber === inst.invoiceNumber) {
+          const newPaid = s.paidAmount + paidAmount + discount;
+          const newDue = Math.max(0, s.total - newPaid);
+          const updatedSale: Sale = {
+            ...s,
+            paidAmount: newPaid,
+            dueAmount: newDue,
+            paymentStatus: newDue <= 0 ? 'paid' : 'partial'
+          };
+          if (ownerId) saveDocToFirestore('sales', updatedSale, ownerId);
+          return updatedSale;
+        }
+        return s;
+      }));
+
+      // Double-entry accounting for installment recovery
+      const debitAccount = (method === 'bkash' || method === 'nagad' || method === 'rocket')
+        ? 'bKash/Nagad Wallet'
+        : (method === 'bank' ? 'Bank Account' : 'Cash in Hand');
+
+      addJournalEntry({
+        date: now.toISOString().split('T')[0],
+        referenceNo: `INST-${inst.invoiceNumber}-${Date.now().toString().slice(-4)}`,
+        description: `কিস্তি আদায় (${method.toUpperCase()}) - ইনভয়েস: ${inst.invoiceNumber} (${inst.customerName})${options?.trxId ? ` TrxID: ${options.trxId}` : ''}`,
+        debitAccount,
+        creditAccount: 'Installment Accounts Receivable',
+        amount: paidAmount,
+        branch: inst.branch || branch
+      });
+
       return updatedInst;
     }));
+
+    // Auto-unlock linked locked phone in Device Locker if requested
+    if (options?.autoUnlockLinkedDevice) {
+      const lockedDevice = devices.find(d => 
+        (d.customerPhone === receiptData?.customerPhone || d.customerName === receiptData?.customerName) &&
+        d.lockStatus === 'LOCKED'
+      );
+      if (lockedDevice) {
+        toggleDeviceLock(lockedDevice.id, 'কিস্তি পরিশোধের প্রেক্ষিতে স্বয়ংক্রিয় ডিভাইস আনলক');
+      }
+    }
+
+    if (receiptData) {
+      setLastMoneyReceipt(receiptData);
+      setShowMoneyReceiptModal(true);
+    }
+  };
+
+  // Reverse / Void an installment payment (Error correction)
+  const reverseInstallmentPayment = (installmentId: string, scheduleId: string, reason?: string) => {
+    const ownerId = user?.uid || currentUser?.id || '';
+    const now = new Date();
+
+    setInstallments(prev => prev.map(inst => {
+      if (inst.id !== installmentId) return inst;
+
+      const targetItem = inst.schedule.find(s => s.id === scheduleId);
+      if (!targetItem || (!targetItem.isPaid && (!targetItem.paidAmount || targetItem.paidAmount <= 0))) {
+        return inst;
+      }
+
+      const amountToRevert = targetItem.paidAmount || targetItem.amount;
+
+      const updatedSchedule = inst.schedule.map(sch => {
+        if (sch.id === scheduleId) {
+          return {
+            ...sch,
+            isPaid: false,
+            paidAmount: 0,
+            paidDate: undefined,
+            reversalReason: reason || 'ক্যাশিয়ার কর্তৃক ভুল এন্ট্রি সংশোধন ও বাতিল',
+            reversedAt: now.toISOString(),
+            note: sch.note ? `${sch.note} (বাতিলকৃত)` : 'বাতিলকৃত'
+          };
+        }
+        return sch;
+      });
+
+      const newPaidCount = updatedSchedule.filter(s => s.isPaid).length;
+      const newRemainingBalance = inst.remainingBalance + amountToRevert;
+
+      const updatedInst: Installment = {
+        ...inst,
+        paidCount: newPaidCount,
+        remainingBalance: newRemainingBalance,
+        status: 'active',
+        schedule: updatedSchedule
+      };
+
+      if (ownerId) saveDocToFirestore('installments', updatedInst, ownerId);
+
+      // Revert linked sale
+      setSales(prevSales => prevSales.map(s => {
+        if (s.installmentId === installmentId || s.invoiceNumber === inst.invoiceNumber) {
+          const revertedPaid = Math.max(0, s.paidAmount - amountToRevert);
+          const revertedDue = Math.max(0, s.total - revertedPaid);
+          const updatedSale: Sale = {
+            ...s,
+            paidAmount: revertedPaid,
+            dueAmount: revertedDue,
+            paymentStatus: revertedPaid <= 0 ? 'due' : 'partial'
+          };
+          if (ownerId) saveDocToFirestore('sales', updatedSale, ownerId);
+          return updatedSale;
+        }
+        return s;
+      }));
+
+      // Reversal accounting journal entry
+      addJournalEntry({
+        date: now.toISOString().split('T')[0],
+        referenceNo: `REV-INST-${inst.invoiceNumber}-${Date.now().toString().slice(-4)}`,
+        description: `কিস্তি পেমেন্ট বাতিল/রিভার্সাল - ইনভয়েস #${inst.invoiceNumber} (কারণ: ${reason || 'ভুল এন্ট্রি'})`,
+        debitAccount: 'Installment Accounts Receivable',
+        creditAccount: 'Cash in Hand',
+        amount: amountToRevert,
+        branch: inst.branch || branch
+      });
+
+      return updatedInst;
+    }));
+  };
+
+  // Advanced Due Payment Collection for Regular Sales
+  const collectDuePaymentAdvanced = (
+    saleId: string,
+    amount: number,
+    options?: {
+      paymentMethod?: 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank';
+      trxId?: string;
+      note?: string;
+      autoUnlockLinkedDevice?: boolean;
+    }
+  ) => {
+    const ownerId = user?.uid || currentUser?.id || '';
+    const now = new Date();
+    const method = options?.paymentMethod || 'cash';
+    let receiptData: any = null;
+
+    setSales(prev => prev.map(sale => {
+      if (sale.id !== saleId) return sale;
+      const newPaid = sale.paidAmount + amount;
+      const newDue = Math.max(0, sale.total - newPaid);
+
+      receiptData = {
+        receiptNo: `RC-${Date.now().toString().slice(-6)}`,
+        customerName: sale.customerName,
+        customerPhone: sale.customerPhone,
+        title: 'বকেয়া পরিশোধ রশিদ (Due Voucher)',
+        invoiceNumber: sale.invoiceNumber,
+        productSummary: sale.items.map(i => i.productName).join(', '),
+        amount,
+        remainingDue: newDue,
+        date: now.toISOString(),
+        method,
+        trxId: options?.trxId,
+        note: options?.note
+      };
+
+      const updatedSale: Sale = {
+        ...sale,
+        paidAmount: newPaid,
+        dueAmount: newDue,
+        paymentStatus: newDue <= 0 ? 'paid' : 'partial'
+      };
+      if (ownerId) saveDocToFirestore('sales', updatedSale, ownerId);
+
+      const debitAccount = (method === 'bkash' || method === 'nagad' || method === 'rocket')
+        ? 'bKash/Nagad Wallet'
+        : (method === 'bank' ? 'Bank Account' : 'Cash in Hand');
+
+      addJournalEntry({
+        date: now.toISOString().split('T')[0],
+        referenceNo: `DUE-${sale.invoiceNumber}-${Date.now().toString().slice(-4)}`,
+        description: `বকেয়া আদায় (${method.toUpperCase()}) - ইনভয়েস #${sale.invoiceNumber} (${sale.customerName})${options?.trxId ? ` TrxID: ${options.trxId}` : ''}`,
+        debitAccount,
+        creditAccount: 'Accounts Receivable',
+        amount,
+        branch: sale.branch || branch
+      });
+
+      return updatedSale;
+    }));
+
+    if (options?.autoUnlockLinkedDevice) {
+      const lockedDevice = devices.find(d => 
+        (d.customerPhone === receiptData?.customerPhone || d.customerName === receiptData?.customerName) &&
+        d.lockStatus === 'LOCKED'
+      );
+      if (lockedDevice) {
+        toggleDeviceLock(lockedDevice.id, 'বকেয়া পরিশোধের প্রেক্ষিতে স্বয়ংক্রিয় ডিভাইস আনলক');
+      }
+    }
 
     if (receiptData) {
       setLastMoneyReceipt(receiptData);
@@ -2123,7 +2427,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       updateCustomerCreditProfile,
       recordInstallmentPayment,
       recordInstallmentPartialPayment,
+      recordInstallmentSmartPayment,
+      reverseInstallmentPayment,
       collectDuePayment,
+      collectDuePaymentAdvanced,
       addInstallmentFollowUp,
       addSaleFollowUp,
       addReturnClaim,

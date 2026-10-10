@@ -24,7 +24,15 @@ import {
   FileText,
   AlertTriangle,
   History,
-  Camera
+  Camera,
+  Sparkles,
+  Undo2,
+  Lock,
+  Unlock,
+  Layers,
+  Tag,
+  Filter,
+  X
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Installment, InstallmentScheduleItem, Sale, FollowUpLog } from '../../types';
@@ -42,9 +50,13 @@ export const InstallmentDueManager: React.FC = () => {
     installments, 
     sales, 
     customerProfiles,
+    devices,
     recordInstallmentPayment, 
     recordInstallmentPartialPayment,
+    recordInstallmentSmartPayment,
+    reverseInstallmentPayment,
     collectDuePayment, 
+    collectDuePaymentAdvanced,
     addInstallmentFollowUp,
     addSaleFollowUp,
     formatCurrency, 
@@ -52,6 +64,7 @@ export const InstallmentDueManager: React.FC = () => {
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'installments' | 'dues' | 'ledger' | 'aging'>('installments');
+  const [installmentFilter, setInstallmentFilter] = useState<'all' | 'today' | 'week' | 'overdue' | 'active' | 'completed'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -84,10 +97,19 @@ export const InstallmentDueManager: React.FC = () => {
     type: 'installment' | 'due';
   } | null>(null);
 
-  const [partialPaymentModalData, setPartialPaymentModalData] = useState<{
+  // Smart collection modal state
+  const [smartPaymentModalData, setSmartPaymentModalData] = useState<{
+    installment: Installment;
+    scheduleItem?: InstallmentScheduleItem;
+    initialMode?: 'single' | 'custom' | 'foreclose';
+  } | null>(null);
+
+  // Payment Reversal / Void modal state
+  const [reversalTarget, setReversalTarget] = useState<{
     installment: Installment;
     item: InstallmentScheduleItem;
   } | null>(null);
+  const [reversalReason, setReversalReason] = useState<string>('');
 
   const [creditProfileModalData, setCreditProfileModalData] = useState<{
     customerName: string;
@@ -98,6 +120,10 @@ export const InstallmentDueManager: React.FC = () => {
   // Due collection modal state
   const [collectingSale, setCollectingSale] = useState<Sale | null>(null);
   const [collectAmount, setCollectAmount] = useState<number>(0);
+  const [collectPaymentMethod, setCollectPaymentMethod] = useState<'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank'>('cash');
+  const [collectTrxId, setCollectTrxId] = useState<string>('');
+  const [collectNote, setCollectNote] = useState<string>('');
+  const [collectAutoUnlock, setCollectAutoUnlock] = useState<boolean>(true);
 
   // Calculations for KPI Cards
   const totalInstallmentOutstanding = useMemo(() => {
@@ -116,20 +142,82 @@ export const InstallmentDueManager: React.FC = () => {
     return installments.filter(i => i.status === 'active').length;
   }, [installments]);
 
-  // Filtered installments
+  // Installments Quick Filter Counters
+  const installmentFilterCounts = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const in7DaysDate = new Date();
+    in7DaysDate.setDate(in7DaysDate.getDate() + 7);
+    const in7Days = in7DaysDate.toISOString().split('T')[0];
+
+    let todayCount = 0;
+    let weekCount = 0;
+    let overdueCount = 0;
+    let activeCount = 0;
+    let completedCount = 0;
+
+    installments.forEach(inst => {
+      const isCompleted = inst.status === 'completed' || inst.status === 'foreclosed' || inst.remainingBalance <= 0;
+      if (isCompleted) {
+        completedCount++;
+      } else {
+        activeCount++;
+      }
+
+      const hasOverdue = inst.schedule.some(s => !s.isPaid && s.dueDate < today);
+      if (hasOverdue) overdueCount++;
+
+      const hasDueToday = inst.schedule.some(s => !s.isPaid && s.dueDate === today);
+      if (hasDueToday) todayCount++;
+
+      const hasDueThisWeek = inst.schedule.some(s => !s.isPaid && s.dueDate >= today && s.dueDate <= in7Days);
+      if (hasDueThisWeek) weekCount++;
+    });
+
+    return {
+      all: installments.length,
+      today: todayCount,
+      week: weekCount,
+      overdue: overdueCount,
+      active: activeCount,
+      completed: completedCount
+    };
+  }, [installments]);
+
+  // Filtered installments (by Search Query and Quick Sub-filter)
   const filteredInstallments = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const in7DaysDate = new Date();
+    in7DaysDate.setDate(in7DaysDate.getDate() + 7);
+    const in7Days = in7DaysDate.toISOString().split('T')[0];
+
     return installments.filter(inst => {
+      // 1. Text Search Match
       const q = searchQuery.toLowerCase().trim();
-      if (!q) return true;
-      return (
+      const matchesSearch = !q || (
         inst.customerName.toLowerCase().includes(q) ||
         inst.customerPhone.toLowerCase().includes(q) ||
         inst.invoiceNumber.toLowerCase().includes(q) ||
         inst.productNameSummary.toLowerCase().includes(q) ||
         (inst.guarantorName && inst.guarantorName.toLowerCase().includes(q))
       );
+      if (!matchesSearch) return false;
+
+      // 2. Tab Filter Match
+      const isCompleted = inst.status === 'completed' || inst.status === 'foreclosed' || inst.remainingBalance <= 0;
+      if (installmentFilter === 'active') return !isCompleted;
+      if (installmentFilter === 'completed') return isCompleted;
+      if (installmentFilter === 'overdue') return inst.schedule.some(s => !s.isPaid && s.dueDate < today);
+      if (installmentFilter === 'today') return inst.schedule.some(s => !s.isPaid && s.dueDate === today);
+      if (installmentFilter === 'week') return inst.schedule.some(s => !s.isPaid && s.dueDate >= today && s.dueDate <= in7Days);
+      return true;
     });
-  }, [installments, searchQuery]);
+  }, [installments, searchQuery, installmentFilter]);
+
+  // Live synchronizing selected installment
+  const currentSelectedInstallment = useMemo(() => {
+    if (!selectedInstallment) return null;
+    return installments.find(i => i.id === selectedInstallment.id) || selectedInstallment;
+  }, [installments, selectedInstallment]);
 
   // Filtered dues sales
   const dueSales = useMemo(() => {
@@ -304,59 +392,50 @@ export const InstallmentDueManager: React.FC = () => {
     return brackets;
   }, [sales, installments]);
 
-  // Handle Pay Monthly Installment (Quick full payment)
+  // Handle Pay Monthly Installment (Quick full payment via smart engine)
   const handlePayInstallment = (inst: Installment, sch: InstallmentScheduleItem) => {
-    recordInstallmentPayment(inst.id, sch.id, sch.amount);
-    
-    // Update local selected state
-    setSelectedInstallment(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        paidCount: prev.paidCount + 1,
-        remainingBalance: Math.max(0, prev.remainingBalance - sch.amount),
-        schedule: prev.schedule.map(s => s.id === sch.id ? { ...s, isPaid: true } : s)
-      };
+    recordInstallmentSmartPayment(inst.id, sch.amount, {
+      targetScheduleId: sch.id,
+      paymentMethod: 'cash'
     });
   };
 
-  // Handle Partial / Penalty Installment Payment
-  const handleConfirmPartialPayment = (paidAmount: number, penaltyAmount: number, note?: string) => {
-    if (!partialPaymentModalData) return;
-    const { installment, item } = partialPaymentModalData;
-    recordInstallmentPartialPayment(installment.id, item.id, paidAmount, penaltyAmount, note);
-
-    // Refresh selected drawer
-    setSelectedInstallment(prev => {
-      if (!prev || prev.id !== installment.id) return prev;
-      const updatedBalance = Math.max(0, prev.remainingBalance - paidAmount);
-      return {
-        ...prev,
-        remainingBalance: updatedBalance,
-        schedule: prev.schedule.map(s => s.id === item.id ? {
-          ...s,
-          paidAmount: (s.paidAmount || 0) + paidAmount,
-          isPaid: ((s.paidAmount || 0) + paidAmount) >= (s.amount + penaltyAmount)
-        } : s)
-      };
-    });
-
-    setPartialPaymentModalData(null);
+  // Handle Payment Reversal (Void error)
+  const handleConfirmReversal = () => {
+    if (!reversalTarget) return;
+    reverseInstallmentPayment(
+      reversalTarget.installment.id,
+      reversalTarget.item.id,
+      reversalReason.trim() || 'ক্যাশিয়ার কর্তৃক ভুল এন্ট্রি সংশোধন ও বাতিল'
+    );
+    setReversalTarget(null);
+    setReversalReason('');
   };
 
   // Open Collect Due Modal for Sale
   const handleOpenCollectDue = (sale: Sale) => {
     setCollectingSale(sale);
     setCollectAmount(sale.dueAmount);
+    setCollectPaymentMethod('cash');
+    setCollectTrxId('');
+    setCollectNote('');
+    setCollectAutoUnlock(true);
   };
 
-  // Submit Collect Due Payment
+  // Submit Collect Due Payment (Advanced with methods & auto unlock)
   const handleCollectDue = (e: React.FormEvent) => {
     e.preventDefault();
     if (!collectingSale || collectAmount <= 0) return;
-    collectDuePayment(collectingSale.id, collectAmount);
+    collectDuePaymentAdvanced(collectingSale.id, collectAmount, {
+      paymentMethod: collectPaymentMethod,
+      trxId: collectTrxId.trim() || undefined,
+      note: collectNote.trim() || undefined,
+      autoUnlockLinkedDevice: collectAutoUnlock
+    });
     setCollectingSale(null);
     setCollectAmount(0);
+    setCollectTrxId('');
+    setCollectNote('');
   };
 
   // Helper for customer risk badges
@@ -522,6 +601,48 @@ export const InstallmentDueManager: React.FC = () => {
         {/* Tab 1: Installments (EMI Plans) */}
         {activeTab === 'installments' && (
           <div>
+            {/* Quick Filter Pill Buttons */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-2.5 mb-3.5 scrollbar-none">
+              {[
+                { id: 'all', label: 'সকল কিস্তি', count: installmentFilterCounts.all },
+                { id: 'today', label: 'আজকের কিস্তি', count: installmentFilterCounts.today, alert: installmentFilterCounts.today > 0 },
+                { id: 'week', label: 'আগামী ৭ দিন', count: installmentFilterCounts.week },
+                { id: 'overdue', label: 'মেয়াদোত্তীর্ণ', count: installmentFilterCounts.overdue, danger: installmentFilterCounts.overdue > 0 },
+                { id: 'active', label: 'চলমান কিস্তি', count: installmentFilterCounts.active },
+                { id: 'completed', label: 'সম্পূর্ণ পরিশোধিত', count: installmentFilterCounts.completed }
+              ].map(f => {
+                const isSelected = installmentFilter === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    onClick={() => setInstallmentFilter(f.id as any)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 border ${
+                      isSelected
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                        : f.danger
+                        ? 'bg-rose-50 border-rose-200 text-rose-800 hover:bg-rose-100'
+                        : f.alert
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-800 hover:bg-indigo-100'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>{f.label}</span>
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
+                      isSelected 
+                        ? 'bg-white/20 text-white' 
+                        : f.danger 
+                        ? 'bg-rose-200 text-rose-900' 
+                        : f.alert 
+                        ? 'bg-indigo-200 text-indigo-900' 
+                        : 'bg-slate-100 text-slate-700'
+                    }`}>
+                      {f.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
             {filteredInstallments.length === 0 ? (
               <div className="h-64 flex flex-col items-center justify-center text-slate-400">
                 <Calendar className="w-12 h-12 mb-2 stroke-1" />
@@ -679,14 +800,24 @@ export const InstallmentDueManager: React.FC = () => {
                           </button>
                         </div>
 
-                        {/* View Schedule Button */}
-                        <button
-                          onClick={() => setSelectedInstallment(inst)}
-                          className="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold border border-indigo-200 flex items-center justify-center gap-1.5 transition"
-                        >
-                          <Receipt className="w-3.5 h-3.5" />
-                          <span>{t('সিডিউল ও কিস্তির টাকা জমা নিন', 'View Schedule & Collect Payment')}</span>
-                        </button>
+                        {/* Action Buttons Row */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            onClick={() => setSelectedInstallment(inst)}
+                            className="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold border border-slate-200 flex items-center justify-center gap-1.5 transition"
+                          >
+                            <Receipt className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>{t('সিডিউল', 'Schedule')}</span>
+                          </button>
+
+                          <button
+                            onClick={() => setSmartPaymentModalData({ installment: inst, initialMode: 'custom' })}
+                            className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center justify-center gap-1.5 transition active:scale-95"
+                          >
+                            <DollarSign className="w-3.5 h-3.5" />
+                            <span>{t('টাকা আদায়', 'Cash In')}</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1051,64 +1182,118 @@ export const InstallmentDueManager: React.FC = () => {
       </div>
 
       {/* Selected Installment Schedule Drawer / Modal */}
-      {selectedInstallment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-slate-200">
+      {currentSelectedInstallment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-200 my-4 flex flex-col max-h-[92vh]">
             
             {/* Header */}
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+            <div className="px-5 sm:px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
               <div>
-                <h3 className="font-bold text-base sm:text-lg">{t('কিস্তির সিডিউল ও পেমেন্ট রসিদ', 'EMI Schedule & Payment History')}</h3>
-                <p className="text-xs text-slate-400 font-mono">
-                  {selectedInstallment.invoiceNumber} • {selectedInstallment.customerName}
+                <h3 className="font-bold text-base sm:text-lg flex items-center gap-2">
+                  <span>{t('কিস্তির সিডিউল ও পেমেন্ট রসিদ', 'EMI Schedule & Payment History')}</span>
+                  {currentSelectedInstallment.status === 'completed' || currentSelectedInstallment.status === 'foreclosed' ? (
+                    <span className="bg-emerald-500/20 text-emerald-300 text-xs px-2 py-0.5 rounded-full border border-emerald-400/30 font-bold">
+                      {currentSelectedInstallment.status === 'foreclosed' ? 'এককালীন নিষ্পত্তিকৃত' : 'সম্পূর্ণ পরিশোধিত'}
+                    </span>
+                  ) : (
+                    <span className="bg-amber-500/20 text-amber-300 text-xs px-2 py-0.5 rounded-full border border-amber-400/30 font-bold">
+                      চলমান কিস্তি
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  চালান: {currentSelectedInstallment.invoiceNumber} • গ্রাহক: {currentSelectedInstallment.customerName} ({currentSelectedInstallment.customerPhone})
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setPassbookInstallment(selectedInstallment)}
-                  className="flex items-center gap-1 px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold transition"
+                  onClick={() => setPassbookInstallment(currentSelectedInstallment)}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition"
                 >
                   <FileText className="w-3.5 h-3.5" />
                   <span>পাসবুক কার্ড</span>
                 </button>
-                <button onClick={() => setSelectedInstallment(null)} className="text-slate-400 hover:text-white p-1">✕</button>
+                <button 
+                  onClick={() => setSelectedInstallment(null)} 
+                  className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
             </div>
 
             {/* Content */}
-            <div className="p-5 sm:p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
               
               {/* Summary Banner */}
               <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 grid grid-cols-3 gap-2 text-center text-xs">
                 <div>
                   <span className="text-slate-500 block">{t('মোট ঋণ:', 'Total Cost:')}</span>
-                  <span className="font-mono font-bold text-slate-800">{formatCurrency(selectedInstallment.totalAmount)}</span>
+                  <span className="font-mono font-bold text-slate-800">{formatCurrency(currentSelectedInstallment.totalAmount)}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">{t('ডাউন পেমেন্ট:', 'Down Payment:')}</span>
-                  <span className="font-mono font-bold text-emerald-600">{formatCurrency(selectedInstallment.downPayment)}</span>
+                  <span className="font-mono font-bold text-emerald-600">{formatCurrency(currentSelectedInstallment.downPayment)}</span>
                 </div>
                 <div>
                   <span className="text-slate-500 block">{t('অবশিষ্ট পাওনা:', 'Remaining Balance:')}</span>
-                  <span className="font-mono font-bold text-rose-600">{formatCurrency(selectedInstallment.remainingBalance)}</span>
+                  <span className="font-mono font-bold text-rose-600">{formatCurrency(currentSelectedInstallment.remainingBalance)}</span>
                 </div>
               </div>
 
+              {/* Action Toolbar for Collection */}
+              {currentSelectedInstallment.remainingBalance > 0 && (
+                <div className="flex flex-wrap items-center gap-2 bg-indigo-50/70 p-3 rounded-xl border border-indigo-200">
+                  <div className="flex-1 min-w-[200px]">
+                    <span className="text-xs font-bold text-indigo-900 block flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                      স্মার্ট কিস্তি কালেকশন অ্যাকশন
+                    </span>
+                    <span className="text-[11px] text-indigo-700">
+                      যেকোনো অংকের টাকা দিলে স্বয়ংক্রিয়ভাবে পরবর্তী কিস্তিগুলোতে ভাগ হয়ে যাবে
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSmartPaymentModalData({ installment: currentSelectedInstallment, initialMode: 'custom' })}
+                      className="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1 active:scale-95"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>কাস্টম টাকা জমা</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSmartPaymentModalData({ installment: currentSelectedInstallment, initialMode: 'foreclose' })}
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-xs transition flex items-center gap-1 active:scale-95"
+                    >
+                      <Tag className="w-3.5 h-3.5" />
+                      <span>এককালীন লোন ক্লোজ (ছাড় সহ)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Installment Schedule Table */}
               <div>
-                <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
-                  {t('মাসিক কিস্তির তালিকা', 'Monthly Installment Schedule')}
-                </h5>
+                <div className="flex items-center justify-between mb-2">
+                  <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    {t('মাসিক কিস্তির তালিকা', 'Monthly Installment Schedule')}
+                  </h5>
+                  <span className="text-xs text-slate-500 font-mono">
+                    পরিশোধ: {currentSelectedInstallment.paidCount} / {currentSelectedInstallment.installmentCount}
+                  </span>
+                </div>
 
                 <div className="space-y-2">
-                  {selectedInstallment.schedule.map((sch) => {
+                  {currentSelectedInstallment.schedule.map((sch) => {
                     const today = new Date().toISOString().split('T')[0];
                     const isOverdue = !sch.isPaid && sch.dueDate < today;
 
                     return (
                       <div 
                         key={sch.id}
-                        className={`p-3 rounded-xl border flex items-center justify-between text-xs transition ${
+                        className={`p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs transition ${
                           sch.isPaid 
                             ? 'bg-emerald-50/60 border-emerald-200' 
                             : isOverdue 
@@ -1116,55 +1301,103 @@ export const InstallmentDueManager: React.FC = () => {
                             : 'bg-white border-slate-200'
                         }`}
                       >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-7 h-7 rounded-full flex items-center justify-center font-mono font-bold text-xs ${
-                            sch.isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
+                        <div className="flex items-start sm:items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-mono font-bold text-xs shrink-0 mt-0.5 sm:mt-0 ${
+                            sch.isPaid ? 'bg-emerald-600 text-white' : isOverdue ? 'bg-rose-600 text-white' : 'bg-slate-200 text-slate-700'
                           }`}>
                             {sch.installmentNo}
                           </div>
                           <div>
-                            <div className="font-semibold text-slate-800">
-                              {t('কিস্তি নং', 'Installment #')} {sch.installmentNo}
-                            </div>
-                            <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                              <Calendar className="w-3 h-3 text-slate-400" />
-                              <span>{t('পরিশোধের শেষ তারিখ:', 'Due Date:')} {sch.dueDate}</span>
-                              {isOverdue && (
-                                <span className="text-rose-600 font-bold ml-1">({t('মেয়াদ উত্তীর্ণ', 'Overdue')})</span>
+                            <div className="font-semibold text-slate-800 flex items-center gap-2">
+                              <span>{t('কিস্তি নং', 'Installment #')} {sch.installmentNo}</span>
+                              {sch.paymentMethod && (
+                                <span className="text-[10px] uppercase font-mono font-bold bg-slate-200/80 text-slate-700 px-1.5 py-0.2 rounded">
+                                  {sch.paymentMethod}
+                                </span>
+                              )}
+                              {sch.receiptNo && (
+                                <span className="text-[10px] font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200">
+                                  {sch.receiptNo}
+                                </span>
                               )}
                             </div>
-                            {sch.paidAmount && !sch.isPaid ? (
-                              <span className="text-[10px] text-amber-700 font-semibold block">
-                                আংশিক জমা: {formatCurrency(sch.paidAmount)}
-                              </span>
-                            ) : null}
+                            
+                            <div className="text-[11px] text-slate-500 flex flex-wrap items-center gap-1.5 mt-0.5">
+                              <Calendar className="w-3 h-3 text-slate-400" />
+                              <span>{t('মেয়াদ:', 'Due:')} {sch.dueDate}</span>
+                              {isOverdue && (
+                                <span className="text-rose-600 font-bold bg-rose-100 px-1.5 py-0.2 rounded">
+                                  মেয়াদোত্তীর্ণ
+                                </span>
+                              )}
+                              {sch.paidDate && (
+                                <span className="text-emerald-700 font-medium">
+                                  • জমা: {new Date(sch.paidDate).toLocaleDateString('bn-BD')}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Additional info badges */}
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              {sch.paidAmount && !sch.isPaid ? (
+                                <span className="text-[10px] text-amber-800 bg-amber-100 font-bold px-1.5 py-0.2 rounded">
+                                  আংশিক জমা: {formatCurrency(sch.paidAmount)} (বাকি: {formatCurrency(sch.amount - sch.paidAmount)})
+                                </span>
+                              ) : null}
+                              {sch.lateFee && sch.lateFee > 0 ? (
+                                <span className="text-[10px] text-rose-700 bg-rose-100 font-semibold px-1.5 py-0.2 rounded">
+                                  জরিমানা: +{formatCurrency(sch.lateFee)}
+                                </span>
+                              ) : null}
+                              {sch.waivedPenalty && sch.waivedPenalty > 0 ? (
+                                <span className="text-[10px] text-emerald-800 bg-emerald-100 font-semibold px-1.5 py-0.2 rounded">
+                                  মওকুফ ফি: {formatCurrency(sch.waivedPenalty)}
+                                </span>
+                              ) : null}
+                              {sch.discountAmount && sch.discountAmount > 0 ? (
+                                <span className="text-[10px] text-indigo-800 bg-indigo-100 font-semibold px-1.5 py-0.2 rounded">
+                                  ছাড়: -{formatCurrency(sch.discountAmount)}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center justify-between sm:justify-end gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
                           <span className="font-mono font-bold text-sm text-slate-900 mr-2">
                             {formatCurrency(sch.amount)}
                           </span>
 
                           {sch.isPaid ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-lg">
-                              <Check className="w-3.5 h-3.5" />
-                              {t('পরিশোধিত', 'Paid')}
-                            </span>
-                          ) : (
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-lg">
+                                <Check className="w-3.5 h-3.5" />
+                                {t('পরিশোধিত', 'Paid')}
+                              </span>
                               <button
-                                onClick={() => setPartialPaymentModalData({ installment: selectedInstallment, item: sch })}
-                                className="px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-semibold transition"
-                                title="আংশিক টাকা বা জরিমানা সহ জমা নিন"
+                                type="button"
+                                onClick={() => setReversalTarget({ installment: currentSelectedInstallment, item: sch })}
+                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                title="ভুল এন্ট্রি বাতিল ও সংশোধন করুন (Void Payment)"
                               >
-                                আংশিক / ফি
+                                <Undo2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => setSmartPaymentModalData({ installment: currentSelectedInstallment, scheduleItem: sch, initialMode: 'single' })}
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold shadow-xs transition flex items-center gap-1 active:scale-95"
+                              >
+                                <DollarSign className="w-3 h-3" />
+                                <span>আদায় ও রসিদ</span>
                               </button>
                               <button
-                                onClick={() => handlePayInstallment(selectedInstallment, sch)}
-                                className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow-xs transition"
+                                onClick={() => handlePayInstallment(currentSelectedInstallment, sch)}
+                                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition"
+                                title="১-ক্লিক পূর্ণ জমা"
                               >
-                                {t('পূর্ণ আদায়', 'Collect Full')}
+                                {t('পূর্ণ আদায়', 'Full')}
                               </button>
                             </div>
                           )}
@@ -1177,7 +1410,7 @@ export const InstallmentDueManager: React.FC = () => {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end">
+            <div className="px-5 sm:px-6 py-3 bg-slate-50 border-t border-slate-200 flex justify-end shrink-0">
               <button
                 onClick={() => setSelectedInstallment(null)}
                 className="px-4 py-2 bg-slate-800 text-white rounded-xl text-xs font-semibold hover:bg-slate-700 transition"
@@ -1190,63 +1423,157 @@ export const InstallmentDueManager: React.FC = () => {
       )}
 
       {/* Collect Due Payment Modal (for Tab 2) */}
-      {collectingSale && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 border border-slate-100">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <h4 className="font-bold text-slate-800 text-sm">{t('বাকি টাকা আদায়', 'Collect Due Payment')}</h4>
-              <button onClick={() => setCollectingSale(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+      {collectingSale && (() => {
+        const lockedDevice = devices.find(d => 
+          (
+            (d.customerPhone && d.customerPhone !== 'N/A' && d.customerPhone === collectingSale.customerPhone) ||
+            (d.customerName && d.customerName === collectingSale.customerName)
+          ) && d.lockStatus === 'LOCKED'
+        );
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 border border-slate-100 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                    ৳
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-800 text-sm">{t('বাকি টাকা আদায়', 'Collect Due Payment')}</h4>
+                    <p className="text-[11px] text-slate-500">ইনভয়েস: {collectingSale.invoiceNumber}</p>
+                  </div>
+                </div>
+                <button onClick={() => setCollectingSale(null)} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
+              </div>
+
+              {lockedDevice && (
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-2.5 text-xs text-rose-900 space-y-1">
+                  <span className="font-bold flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-rose-600" />
+                    লক করা ডিভাইস সনাক্ত হয়েছে ({lockedDevice.model})
+                  </span>
+                  <label className="flex items-center gap-2 mt-1 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={collectAutoUnlock}
+                      onChange={(e) => setCollectAutoUnlock(e.target.checked)}
+                      className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                    />
+                    <span className="font-semibold text-rose-900">
+                      টাকা জমা হলে সাথে সাথে স্বয়ংক্রিয়ভাবে আনলক করুন
+                    </span>
+                  </label>
+                </div>
+              )}
+
+              <form onSubmit={handleCollectDue} className="space-y-3">
+                <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
+                  <div className="flex justify-between text-slate-600">
+                    <span>{t('ক্রেতার নাম:', 'Customer:')}</span>
+                    <span className="font-semibold text-slate-800">{collectingSale.customerName}</span>
+                  </div>
+                  <div className="flex justify-between text-rose-600 font-bold pt-1 border-t border-slate-200">
+                    <span>{t('বর্তমান মোট বকেয়া:', 'Current Due:')}</span>
+                    <span className="font-mono">{formatCurrency(collectingSale.dueAmount)}</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      {t('আদায়কৃত টাকার পরিমাণ (৳):', 'Payment Amount Received:')}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setCollectAmount(collectingSale.dueAmount)}
+                      className="text-[10px] text-indigo-600 font-bold hover:underline"
+                    >
+                      সম্পূর্ণ বকেয়া ({formatCurrency(collectingSale.dueAmount)})
+                    </button>
+                  </div>
+                  <input
+                    type="number"
+                    min="1"
+                    max={collectingSale.dueAmount}
+                    value={collectAmount}
+                    onChange={(e) => setCollectAmount(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-base font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                </div>
+
+                {/* Payment Method Selector */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    পেমেন্ট মাধ্যম:
+                  </label>
+                  <div className="grid grid-cols-5 gap-1 text-center">
+                    {[
+                      { id: 'cash', label: 'নগদ' },
+                      { id: 'bkash', label: 'বিকাশ' },
+                      { id: 'nagad', label: 'নগদ' },
+                      { id: 'rocket', label: 'রকেট' },
+                      { id: 'bank', label: 'ব্যাংক' }
+                    ].map(m => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => setCollectPaymentMethod(m.id as any)}
+                        className={`py-1.5 rounded-lg text-xs font-bold border transition ${
+                          collectPaymentMethod === m.id
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                            : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {collectPaymentMethod !== 'cash' && (
+                    <div className="mt-2">
+                      <input
+                        type="text"
+                        value={collectTrxId}
+                        onChange={(e) => setCollectTrxId(e.target.value)}
+                        placeholder="TrxID / ট্রানজ্যাকশন আইডি..."
+                        className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs font-mono uppercase focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <input
+                    type="text"
+                    value={collectNote}
+                    onChange={(e) => setCollectNote(e.target.value)}
+                    placeholder="পেমেন্ট নোট বা মন্তব্য (ঐচ্ছিক)..."
+                    className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs focus:ring-1 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setCollectingSale(null)}
+                    className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800"
+                  >
+                    {t('বাতিল', 'Cancel')}
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-100 transition active:scale-95"
+                  >
+                    {t('জমা সংরক্ষণ করুন ও রশিদ দিন', 'Confirm & Receipt')}
+                  </button>
+                </div>
+              </form>
             </div>
-
-            <form onSubmit={handleCollectDue} className="py-4 space-y-3">
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
-                <div className="flex justify-between text-slate-600">
-                  <span>{t('ইনভয়েস #:', 'Invoice #:')}</span>
-                  <span className="font-mono font-bold text-slate-800">{collectingSale.invoiceNumber}</span>
-                </div>
-                <div className="flex justify-between text-slate-600">
-                  <span>{t('ক্রেতার নাম:', 'Customer:')}</span>
-                  <span className="font-semibold text-slate-800">{collectingSale.customerName}</span>
-                </div>
-                <div className="flex justify-between text-rose-600 font-bold pt-1 border-t border-slate-200">
-                  <span>{t('বর্তমান মোট বকেয়া:', 'Current Due:')}</span>
-                  <span className="font-mono">{formatCurrency(collectingSale.dueAmount)}</span>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
-                  {t('আদায়কৃত টাকার পরিমাণ (৳):', 'Payment Amount Received:')}
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max={collectingSale.dueAmount}
-                  value={collectAmount}
-                  onChange={(e) => setCollectAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-sm font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setCollectingSale(null)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800"
-                >
-                  {t('বাতিল', 'Cancel')}
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-100 transition"
-                >
-                  {t('জমা সংরক্ষণ করুন', 'Confirm Payment')}
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Installment Passbook Modal */}
       {passbookInstallment && (
@@ -1285,15 +1612,77 @@ export const InstallmentDueManager: React.FC = () => {
         />
       )}
 
-      {/* Partial / Late Fee Payment Modal */}
-      {partialPaymentModalData && (
+      {/* Smart Installment Collection Modal */}
+      {smartPaymentModalData && (
         <PartialPaymentModal
           isOpen={true}
-          onClose={() => setPartialPaymentModalData(null)}
-          installment={partialPaymentModalData.installment}
-          scheduleItem={partialPaymentModalData.item}
-          onConfirmPayment={handleConfirmPartialPayment}
+          onClose={() => setSmartPaymentModalData(null)}
+          installment={smartPaymentModalData.installment}
+          scheduleItem={smartPaymentModalData.scheduleItem}
+          initialMode={smartPaymentModalData.initialMode}
         />
+      )}
+
+      {/* Payment Reversal (Void / Error correction) Modal */}
+      {reversalTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-slate-200 p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center">
+                <Undo2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-slate-900 text-sm">কিস্তি পেমেন্ট বাতিল / রিভার্সাল</h4>
+                <p className="text-xs text-slate-500">ভুল এন্ট্রি সংশোধন করুন</p>
+              </div>
+            </div>
+
+            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-900 space-y-1">
+              <div className="flex justify-between">
+                <span>কিস্তি নং:</span>
+                <span className="font-bold">#{reversalTarget.item.installmentNo}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>জমা হওয়া টাকা:</span>
+                <span className="font-mono font-bold">{formatCurrency(reversalTarget.item.paidAmount || reversalTarget.item.amount)}</span>
+              </div>
+              <p className="text-[11px] text-rose-700 pt-1 border-t border-rose-200 mt-1">
+                সতর্কতা: এই পেমেন্ট বাতিল করলে উক্ত টাকা কিস্তির বকেয়াতে পুনরায় যোগ হবে এবং লেজারে রিভার্সাল জার্নাল এন্ট্রি পড়বে।
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                বাতিলের কারণ (বাধ্যতামূলক):
+              </label>
+              <input
+                type="text"
+                value={reversalReason}
+                onChange={(e) => setReversalReason(e.target.value)}
+                placeholder="যেমন: ভুল কাস্টমারে এন্ট্রি দেওয়া হয়েছিল..."
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-rose-500"
+                required
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setReversalTarget(null)}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800"
+              >
+                বাতিল
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReversal}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-100 transition active:scale-95"
+              >
+                নিশ্চিত রিভার্স করুন
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Customer Credit Profile Modal */}

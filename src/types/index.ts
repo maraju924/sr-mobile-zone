@@ -101,11 +101,19 @@ export interface InstallmentScheduleItem {
   amount: number;
   paidDate?: string;
   paidAmount?: number;
+  paymentMethod?: 'cash' | 'bkash' | 'nagad' | 'rocket' | 'bank' | 'split';
+  trxId?: string;
+  bankAccount?: string;
   lateFee?: number;
+  waivedPenalty?: number;
+  discountAmount?: number;
+  collectedBy?: string;
   remainingOnInstallment?: number;
   isPaid: boolean;
   receiptNo?: string;
   note?: string;
+  reversalReason?: string;
+  reversedAt?: string;
 }
 
 export interface Installment {
@@ -138,10 +146,12 @@ export interface Installment {
   monthlyAmount: number;
   installmentCount: number;
   paidCount: number;
-  status: 'active' | 'completed' | 'overdue';
+  status: 'active' | 'completed' | 'overdue' | 'foreclosed';
   schedule: InstallmentScheduleItem[];
   lateFeePerDay?: number;
   totalLateFeeAccrued?: number;
+  totalWaivedPenalty?: number;
+  earlySettlementDiscount?: number;
   followUps?: FollowUpLog[];
   createdAt: string;
 }
