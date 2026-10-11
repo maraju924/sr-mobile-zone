@@ -201,6 +201,7 @@ export interface StoreSettings {
   ownerId: string;
   storeName: string;
   phone: string;
+  email?: string;
   address: string;
   vatPercent: number;
   currencySymbol: string;
@@ -342,7 +343,8 @@ export type ActiveTab =
   | 'sms' 
   | 'chat' 
   | 'staff' 
-  | 'settings';
+  | 'settings'
+  | 'super_admin';
 
 export type Language = 'bn' | 'en';
 export type Branch = string;
@@ -580,4 +582,58 @@ export interface AuthUser {
   securityPin: string;
   avatar?: string;
   lastLogin?: string;
+  isPlatformAdmin?: boolean;
 }
+
+// --- Multi-Tenant SaaS Platform Models ---
+export interface TenantAccount {
+  id: string;
+  storeName: string;
+  ownerEmail: string;
+  ownerUid?: string;
+  ownerName: string;
+  phone: string;
+  address: string;
+  status: 'active' | 'suspended' | 'locked' | 'trial';
+  createdAt: string;
+  lastActive: string;
+  branchCount: number;
+  productCount: number;
+  salesCount: number;
+  totalRevenue: number;
+  notes?: string;
+  storageUsageMb?: number;
+}
+
+export interface SystemBroadcast {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'warning' | 'alert' | 'success';
+  createdAt: string;
+  authorEmail: string;
+  isActive: boolean;
+  dismissible: boolean;
+  priority: 'normal' | 'high' | 'urgent';
+}
+
+export interface SecurityAuditLog {
+  id: string;
+  timestamp: string;
+  actorEmail: string;
+  action: string;
+  category: 'AUTH' | 'TENANT' | 'SECURITY' | 'DATA_WIPE' | 'MAINTENANCE' | 'BACKUP';
+  details: string;
+  ipAddress?: string;
+  status: 'success' | 'failed' | 'warning';
+}
+
+export interface PlatformConfig {
+  maintenanceMode: boolean;
+  maintenanceNotice: string;
+  allowNewRegistrations: boolean;
+  enforceMfa: boolean;
+  version: string;
+  lastUpdated: string;
+}
+

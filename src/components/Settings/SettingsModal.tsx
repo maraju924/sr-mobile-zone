@@ -46,6 +46,7 @@ export const SettingsModal: React.FC = () => {
 
   const [storeName, setStoreName] = useState(settings.storeName);
   const [phone, setPhone] = useState(settings.phone);
+  const [storeEmail, setStoreEmail] = useState(settings.email || (currentUser?.email ? currentUser.email : ''));
   const [address, setAddress] = useState(settings.address);
   const [vatPercent, setVatPercent] = useState(settings.vatPercent);
   const [currencySymbol, setCurrencySymbol] = useState(settings.currencySymbol);
@@ -68,6 +69,7 @@ export const SettingsModal: React.FC = () => {
     updateSettings({
       storeName: storeName.trim(),
       phone: phone.trim(),
+      email: storeEmail.trim(),
       address: address.trim(),
       vatPercent,
       currencySymbol: currencySymbol.trim(),
@@ -177,6 +179,21 @@ export const SettingsModal: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  {t('দোকানের অফিসিয়াল ইমেইল (লগইন / ওনার মেইল)', 'Official Store / Owner Email')}
+                </label>
+                <input
+                  type="email"
+                  value={storeEmail}
+                  onChange={(e) => setStoreEmail(e.target.value)}
+                  placeholder="srmobile@example.com"
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl font-mono focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
                   {t('কারেন্সি সিম্বল', 'Currency Symbol')}
                 </label>
                 <input
@@ -184,6 +201,20 @@ export const SettingsModal: React.FC = () => {
                   value={currencySymbol}
                   onChange={(e) => setCurrencySymbol(e.target.value)}
                   className="w-full px-3.5 py-2 border border-slate-200 rounded-xl font-mono text-center focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase mb-1">
+                  {t('ডিফল্ট ভ্যাট / ট্যাক্স হার (%)', 'Default VAT / Tax Rate (%)')}
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={vatPercent}
+                  onChange={(e) => setVatPercent(Number(e.target.value) || 0)}
+                  className="w-full px-3.5 py-2 border border-slate-200 rounded-xl font-mono focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
             </div>

@@ -32,6 +32,9 @@ import { SettingsModal } from './components/Settings/SettingsModal';
 import { InvoiceModal } from './components/POS/InvoiceModal';
 import { MoneyReceiptModal } from './components/Installments/MoneyReceiptModal';
 import { LoginScreen } from './components/Auth/LoginScreen';
+import { SuperAdminDashboard } from './components/Admin/SuperAdminDashboard';
+import { GlobalBroadcastBanner } from './components/Navigation/GlobalBroadcastBanner';
+import { InspectionBanner } from './components/Navigation/InspectionBanner';
 import { Smartphone } from 'lucide-react';
 
 // Error Boundary for Device Section
@@ -102,6 +105,12 @@ const AppContent: React.FC = () => {
       {/* Top Header Bar */}
       <Header onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
 
+      {/* Persistent Store Inspection Banner when Super Admin is inspecting a tenant */}
+      <InspectionBanner />
+
+      {/* Global Real-time Multi-Tenant System Broadcast Banner */}
+      <GlobalBroadcastBanner />
+
       {/* Main Screen Body with Sidebar & Dynamic View */}
       <div className={`flex-1 flex overflow-hidden ${(showInvoiceModal || !!lastMoneyReceipt) ? 'print:hidden' : ''}`}>
         {/* Sidebar */}
@@ -113,6 +122,7 @@ const AppContent: React.FC = () => {
         {/* Dynamic Route Content */}
         <main className="flex-1 flex overflow-hidden pb-[60px] lg:pb-0 relative">
           {activeTab === 'home' && <HomeDashboard />}
+          {activeTab === 'super_admin' && <SuperAdminDashboard />}
           {activeTab === 'devices' && (
             <DeviceErrorBoundary>
               <DeviceList />

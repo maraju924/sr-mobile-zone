@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import { 
   Product, 
   ProductCategory,
@@ -29,8 +29,13 @@ import {
   SMSLog,
   ChatMessage,
   AuthUser,
-  UserRole
+  UserRole,
+  TenantAccount,
+  SystemBroadcast,
+  SecurityAuditLog,
+  PlatformConfig
 } from '../types';
+import { isPlatformSuperAdmin } from '../config/platformAdmin';
 import { 
   STORAGE_KEYS, 
   DEFAULT_SETTINGS, 
@@ -44,7 +49,11 @@ import {
   syncCollectionToFirestore, 
   loadCollectionFromFirestore,
   exportDatabaseBackup,
-  importDatabaseBackup
+  importDatabaseBackup,
+  fetchAllFirestoreTenants,
+  discoverLocalTenants,
+  loadUserFromLocal,
+  saveUserToLocal
 } from '../services/storage';
 import { Unsubscribe } from 'firebase/firestore';
 import { 
@@ -289,6 +298,25 @@ interface AppContextType {
   loginEmail: (email: string, pass: string) => Promise<void>;
   registerEmail: (email: string, pass: string, name?: string) => Promise<void>;
   loginStaff: (phoneOrUsername: string, pin: string) => Promise<{ success: boolean; message: string }>;
+
+  // SaaS Super Admin & Platform Operations
+  isSuperAdmin: boolean;
+  tenants: TenantAccount[];
+  broadcasts: SystemBroadcast[];
+  auditLogs: SecurityAuditLog[];
+  platformConfig: PlatformConfig;
+  updateTenantStatus: (tenantId: string, status: TenantAccount['status'], notes?: string) => void;
+  deleteTenantRecord: (tenantId: string) => void;
+  createBroadcast: (broadcast: Omit<SystemBroadcast, 'id' | 'createdAt' | 'authorEmail'>) => void;
+  toggleBroadcastStatus: (id: string) => void;
+  deleteBroadcast: (id: string) => void;
+  dismissBroadcast: (id: string) => void;
+  updatePlatformConfig: (updates: Partial<PlatformConfig>) => void;
+  addAuditLog: (action: string, category: SecurityAuditLog['category'], details: string, status?: SecurityAuditLog['status']) => void;
+  impersonateTenant: (ownerEmail: string, storeName: string, ownerUid?: string) => Promise<void>;
+  exitImpersonation: () => void;
+  impersonatingTenant: { email: string; name: string; ownerUid?: string } | null;
+  refreshTenantRegistry: () => Promise<void>;
 }
 
 export const DEFAULT_PRODUCT_CATEGORIES: ProductCategory[] = [
@@ -366,6 +394,183 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [lastMoneyReceipt, setLastMoneyReceipt] = useState<any | null>(null);
   const [showMoneyReceiptModal, setShowMoneyReceiptModal] = useState<boolean>(false);
 
+  // --- SaaS Multi-Tenant Platform State ---
+  const [impersonatingTenant, setImpersonatingTenant] = useState<{ email: string; name: string; ownerUid?: string } | null>(null);
+  const activeSubsRef = useRef<(Unsubscribe | null)[]>([]);
+  const isImpersonatingRef = useRef<boolean>(false);
+  const superAdminBackupRef = useRef<{
+    settings: StoreSettings;
+    products: Product[];
+    sales: Sale[];
+    categories: ProductCategory[];
+    installments: Installment[];
+    returns: ReturnClaim[];
+    suppliers: Supplier[];
+    purchases: Purchase[];
+    repairs: RepairTicket[];
+    expenses: Expense[];
+    customerProfiles: CustomerCreditProfile[];
+    devices: Device[];
+    usedBuys: UsedBuyRecord[];
+    staff: StaffMember[];
+    accounts: AccountEntry[];
+    journalEntries: JournalTransaction[];
+    smsLogs: SMSLog[];
+    chatMessages: ChatMessage[];
+  } | null>(null);
+  const isSuperAdmin = isPlatformSuperAdmin(currentUser?.email || user?.email);
+
+  const [tenants, setTenants] = useState<TenantAccount[]>(() => {
+    return loadFromLocal<TenantAccount[]>(STORAGE_KEYS.PLATFORM_TENANTS, [
+      {
+        id: 'tenant-primary',
+        storeName: 'PhoneSell PRO ডিজিটাল শপ (HQ)',
+        ownerEmail: 'maraju921@gmail.com',
+        ownerName: 'Super Admin',
+        phone: '+৮৮০১৭০০০০০০০১',
+        address: 'ঈশ্বরগঞ্জ বাজার, ময়মনসিংহ',
+        status: 'active',
+        createdAt: '2025-01-01T00:00:00.000Z',
+        lastActive: new Date().toISOString(),
+        branchCount: 2,
+        productCount: 15,
+        salesCount: 42,
+        totalRevenue: 245000,
+        notes: 'Platform Super Admin Flagship Store'
+      }
+    ]);
+  });
+
+  const [broadcasts, setBroadcasts] = useState<SystemBroadcast[]>(() => {
+    return loadFromLocal<SystemBroadcast[]>(STORAGE_KEYS.PLATFORM_BROADCASTS, [
+      {
+        id: 'bc-welcome',
+        title: 'PhoneSell PRO আল্ট্রা-অ্যাডভান্সড SaaS প্ল্যাটফর্মে স্বাগতম!',
+        message: 'সিস্টেমের ক্লাউড মাল্টি-ব্রাঞ্চ, ডিভাইস লকার ও রিয়েলটাইম এনক্রিপশন সক্রিয় রয়েছে। সুপার এডমিন কন্ট্রোল সেন্টার থেকে যেকোনো শপের স্ট্যাটাস ও ডেটা পর্যবেক্ষণ করা যাবে।',
+        type: 'info',
+        createdAt: new Date().toISOString(),
+        authorEmail: 'maraju921@gmail.com',
+        isActive: true,
+        dismissible: true,
+        priority: 'normal'
+      }
+    ]);
+  });
+
+  const [auditLogs, setAuditLogs] = useState<SecurityAuditLog[]>(() => {
+    return loadFromLocal<SecurityAuditLog[]>(STORAGE_KEYS.PLATFORM_AUDIT_LOGS, [
+      {
+        id: `LOG-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        actorEmail: 'system',
+        action: 'PLATFORM_BOOT',
+        category: 'SECURITY',
+        details: 'Ultra-Advanced Multi-Tenant SaaS engine booted with SHA-256 token verification',
+        status: 'success'
+      }
+    ]);
+  });
+
+  const [platformConfig, setPlatformConfig] = useState<PlatformConfig>(() => {
+    return loadFromLocal<PlatformConfig>(STORAGE_KEYS.PLATFORM_CONFIG, {
+      maintenanceMode: false,
+      maintenanceNotice: 'রুটিন সার্ভার আপগ্রেড চলছে। খুব শীঘ্রই সিস্টেম স্বাভাবিক হবে।',
+      allowNewRegistrations: true,
+      enforceMfa: false,
+      version: 'v4.0.0-ENTERPRISE',
+      lastUpdated: new Date().toISOString()
+    });
+  });
+
+  // Save SaaS states locally
+  useEffect(() => {
+    saveToLocal(STORAGE_KEYS.PLATFORM_TENANTS, tenants);
+  }, [tenants]);
+
+  useEffect(() => {
+    saveToLocal(STORAGE_KEYS.PLATFORM_BROADCASTS, broadcasts);
+  }, [broadcasts]);
+
+  useEffect(() => {
+    saveToLocal(STORAGE_KEYS.PLATFORM_AUDIT_LOGS, auditLogs);
+  }, [auditLogs]);
+
+  useEffect(() => {
+    saveToLocal(STORAGE_KEYS.PLATFORM_CONFIG, platformConfig);
+  }, [platformConfig]);
+
+  // Keep tenant live counts up to date for current active store
+  useEffect(() => {
+    if (impersonatingTenant) return;
+    const currentOwner = (currentUser?.email || user?.email || '').toLowerCase().trim();
+    if (!currentOwner) return;
+
+    setTenants(prev => {
+      const isSR = currentOwner === 'srmobilezone000@gmail.com' || currentOwner === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com';
+      const effectiveEmail = isSR ? 'srmobilezone000@gmail.com' : currentOwner;
+      const idx = prev.findIndex(t => t.ownerEmail.toLowerCase() === effectiveEmail || (isSR && (t.ownerUid === 'nzkkjimuewak3uwtcztzkbq7j1s2' || t.ownerEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com')));
+      const updatedRevenue = sales.reduce((sum, s) => sum + (s.total || 0), 0);
+      const storeName = isSR ? 'SR Mobile Zone' : (settings.storeName || 'PhoneSell Store');
+      const branchCount = settings.branches?.length || 1;
+
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = {
+          ...copy[idx],
+          ownerEmail: effectiveEmail,
+          storeName,
+          phone: settings.phone || copy[idx].phone,
+          address: settings.address || copy[idx].address,
+          branchCount,
+          productCount: products.length,
+          salesCount: sales.length,
+          totalRevenue: updatedRevenue,
+          ownerUid: isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : (copy[idx].ownerUid || currentUser?.id || user?.uid),
+          lastActive: new Date().toISOString()
+        };
+        return copy;
+      } else {
+        const newTenant: TenantAccount = {
+          id: `tenant-${Date.now()}`,
+          storeName,
+          ownerEmail: effectiveEmail,
+          ownerUid: isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : (currentUser?.id || user?.uid),
+          ownerName: isSR ? 'SR Mobile Zone' : (currentUser?.name || effectiveEmail.split('@')[0]),
+          phone: settings.phone || '',
+          address: settings.address || '',
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          lastActive: new Date().toISOString(),
+          branchCount,
+          productCount: products.length,
+          salesCount: sales.length,
+          totalRevenue: updatedRevenue
+        };
+        return [newTenant, ...prev];
+      }
+    });
+  }, [currentUser, user, products.length, sales.length, settings, impersonatingTenant]);
+
+  // Canonical active ownerId resolver (ensures multi-device synchronization for SR Mobile Zone & all stores)
+  const getActiveOwnerId = useCallback((): string => {
+    if (impersonatingTenant) {
+      return impersonatingTenant.ownerUid || impersonatingTenant.email || 'default_store_owner';
+    }
+    const cleanEmail = (currentUser?.email || user?.email || '').toLowerCase().trim();
+    const curId = currentUser?.id || user?.uid || '';
+    if (
+      cleanEmail === 'srmobilezone000@gmail.com' ||
+      cleanEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' ||
+      cleanEmail.includes('srmobilezone') ||
+      curId === 'nzkkjimuewak3uwtcztzkbq7j1s2' ||
+      curId === 'srmobilezone000@gmail.com' ||
+      curId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com'
+    ) {
+      return 'nzkkjimuewak3uwtcztzkbq7j1s2';
+    }
+    return currentUser?.id || user?.uid || 'default_store_owner';
+  }, [impersonatingTenant, currentUser, user]);
+
   // Monitor network status
   useEffect(() => {
     const handleOnline = () => {
@@ -387,47 +592,114 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, []);
 
+  // Helper to subscribe to all Firestore collections for a given ownerId
+  const subscribeAllCollections = (targetUid: string, targetEmail?: string): (Unsubscribe | null)[] => {
+    const subs: (Unsubscribe | null)[] = [];
+    if (!targetUid) return subs;
+
+    subs.push(subscribeCollectionFromFirestore<Product>('products', targetUid, (remoteProducts) => {
+      if (remoteProducts && remoteProducts.length > 0) {
+        setProducts(remoteProducts);
+      } else {
+        const local = loadUserFromLocal<Product[]>('products', targetEmail || targetUid, []);
+        if (local && local.length > 0) setProducts(local);
+        else setProducts([]);
+      }
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<ProductCategory>('categories', targetUid, (remoteCategories) => {
+      if (remoteCategories && remoteCategories.length > 0) {
+        setCategories(remoteCategories);
+        saveToLocal(STORAGE_KEYS.CATEGORIES, remoteCategories);
+      } else {
+        const local = loadUserFromLocal<ProductCategory[]>('categories', targetEmail || targetUid, []);
+        if (local && local.length > 0) setCategories(local);
+      }
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<Sale>('sales', targetUid, (remoteSales) => {
+      if (remoteSales && remoteSales.length > 0) {
+        setSales(remoteSales);
+      } else {
+        const local = loadUserFromLocal<Sale[]>('sales', targetEmail || targetUid, []);
+        setSales(local || []);
+      }
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<Installment>('installments', targetUid, (items) => {
+      if (items && items.length > 0) setInstallments(items);
+      else setInstallments(loadUserFromLocal<Installment[]>('installments', targetEmail || targetUid, []));
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<ReturnClaim>('returns', targetUid, setReturns));
+    subs.push(subscribeCollectionFromFirestore<Supplier>('suppliers', targetUid, setSuppliers));
+    subs.push(subscribeCollectionFromFirestore<Purchase>('purchases', targetUid, setPurchases));
+    subs.push(subscribeCollectionFromFirestore<RepairTicket>('repairs', targetUid, setRepairs));
+    subs.push(subscribeCollectionFromFirestore<Expense>('expenses', targetUid, setExpenses));
+    subs.push(subscribeCollectionFromFirestore<CustomerCreditProfile>('customer_profiles', targetUid, setCustomerProfiles));
+    subs.push(subscribeCollectionFromFirestore<Device>('devices', targetUid, setDevices));
+    subs.push(subscribeCollectionFromFirestore<UsedBuyRecord>('used_buys', targetUid, setUsedBuys));
+    subs.push(subscribeCollectionFromFirestore<StaffMember>('staff', targetUid, setStaff));
+    subs.push(subscribeCollectionFromFirestore<AccountEntry>('accounts', targetUid, setAccounts));
+    subs.push(subscribeCollectionFromFirestore<JournalTransaction>('journal', targetUid, setJournalEntries));
+    subs.push(subscribeCollectionFromFirestore<SMSLog>('sms_logs', targetUid, setSmsLogs));
+    subs.push(subscribeCollectionFromFirestore<ChatMessage>('chat_messages', targetUid, setChatMessages));
+
+    return subs;
+  };
+
   // Monitor Auth state & establish 100% real-time Firestore subscriptions scoped to this user
   useEffect(() => {
-    let subscriptions: (Unsubscribe | null)[] = [];
-
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       // Clean up any previous subscriptions immediately
-      subscriptions.forEach(unsub => unsub?.());
-      subscriptions = [];
+      activeSubsRef.current.forEach(unsub => unsub?.());
+      activeSubsRef.current = [];
 
       setUser(fbUser);
       setAuthLoading(false);
 
       if (fbUser && fbUser.email) {
+        const cleanEmail = fbUser.email.toLowerCase().trim();
+        const isSR = cleanEmail === 'srmobilezone000@gmail.com' || cleanEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || cleanEmail.includes('srmobilezone');
+        const resolvedUid = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : fbUser.uid;
+        const resolvedName = isSR ? 'SR Mobile Zone' : (fbUser.displayName || fbUser.email.split('@')[0]);
+        const resolvedEmail = isSR ? 'srmobilezone000@gmail.com' : fbUser.email;
+
         const mappedUser: AuthUser = {
-          id: fbUser.uid,
-          name: fbUser.displayName || fbUser.email.split('@')[0],
-          username: fbUser.email.split('@')[0],
-          email: fbUser.email,
+          id: resolvedUid,
+          name: resolvedName,
+          username: isSR ? 'srmobilezone' : fbUser.email.split('@')[0],
+          email: resolvedEmail,
           role: 'SUPER_ADMIN',
           branch: 'ALL',
           phone: fbUser.phoneNumber || '',
           securityPin: '',
           avatar: fbUser.photoURL || undefined,
+          isPlatformAdmin: isPlatformSuperAdmin(fbUser.email),
           lastLogin: new Date().toISOString()
         };
         setCurrentUser(mappedUser);
         saveToLocal('phonesell_auth_user', mappedUser);
 
-        const uid = fbUser.uid;
+        const uid = resolvedUid;
 
         // Fetch or create user-specific store settings in Firestore
         try {
           const remoteSettings = await loadSettingsFromFirestore(uid);
           if (remoteSettings && remoteSettings.storeName) {
+            if (isSR) {
+              remoteSettings.storeName = 'SR Mobile Zone';
+              remoteSettings.email = 'srmobilezone000@gmail.com';
+              remoteSettings.ownerId = 'nzkkjimuewak3uwtcztzkbq7j1s2';
+            }
             setSettings(remoteSettings);
             setDeviceCredits(remoteSettings.deviceCredits ?? 0);
           } else {
             const initSettings: StoreSettings = {
               ...DEFAULT_SETTINGS,
               ownerId: uid,
-              storeName: 'PhoneSell PRO ডিজিটাল শপ',
+              storeName: isSR ? 'SR Mobile Zone' : 'PhoneSell PRO ডিজিটাল শপ',
+              email: resolvedEmail,
               deviceCredits: 0
             };
             setSettings(initSettings);
@@ -438,70 +710,42 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           console.warn('Initial settings load warning:', err);
         }
 
-        // Real-time Firestore subscriptions - 100% pure cloud data, strictly partitioned by uid
-        subscriptions.push(subscribeCollectionFromFirestore<Product>('products', uid, setProducts));
-        subscriptions.push(subscribeCollectionFromFirestore<ProductCategory>('categories', uid, (remoteCategories) => {
-          if (remoteCategories && remoteCategories.length > 0) {
-            setCategories(remoteCategories);
-            saveToLocal(STORAGE_KEYS.CATEGORIES, remoteCategories);
-          }
-        }));
-        subscriptions.push(subscribeCollectionFromFirestore<Sale>('sales', uid, setSales));
-        subscriptions.push(subscribeCollectionFromFirestore<Installment>('installments', uid, setInstallments));
-        subscriptions.push(subscribeCollectionFromFirestore<ReturnClaim>('returns', uid, setReturns));
-        subscriptions.push(subscribeCollectionFromFirestore<Supplier>('suppliers', uid, setSuppliers));
-        subscriptions.push(subscribeCollectionFromFirestore<Purchase>('purchases', uid, setPurchases));
-        subscriptions.push(subscribeCollectionFromFirestore<RepairTicket>('repairs', uid, setRepairs));
-        subscriptions.push(subscribeCollectionFromFirestore<Expense>('expenses', uid, setExpenses));
-        subscriptions.push(subscribeCollectionFromFirestore<CustomerCreditProfile>('customer_profiles', uid, setCustomerProfiles));
-        subscriptions.push(subscribeCollectionFromFirestore<Device>('devices', uid, setDevices));
-        subscriptions.push(subscribeCollectionFromFirestore<UsedBuyRecord>('used_buys', uid, setUsedBuys));
-        subscriptions.push(subscribeCollectionFromFirestore<StaffMember>('staff', uid, setStaff));
-        subscriptions.push(subscribeCollectionFromFirestore<AccountEntry>('accounts', uid, setAccounts));
-        subscriptions.push(subscribeCollectionFromFirestore<JournalTransaction>('journal', uid, setJournalEntries));
-        subscriptions.push(subscribeCollectionFromFirestore<SMSLog>('sms_logs', uid, setSmsLogs));
-        subscriptions.push(subscribeCollectionFromFirestore<ChatMessage>('chat_messages', uid, setChatMessages));
+        // Real-time Firestore subscriptions if not inspecting a tenant
+        if (!isImpersonatingRef.current) {
+          activeSubsRef.current = subscribeAllCollections(uid, resolvedEmail);
+        }
       } else {
         // If user is logged in via local Super Admin / Vercel session, preserve the session!
         const savedUser = loadFromLocal<AuthUser | null>('phonesell_auth_user', null);
         if (savedUser && (savedUser.email || savedUser.id)) {
+          const cleanEmail = (savedUser.email || '').toLowerCase().trim();
+          const isSR = cleanEmail === 'srmobilezone000@gmail.com' || cleanEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || cleanEmail.includes('srmobilezone') || savedUser.id === 'nzkkjimuewak3uwtcztzkbq7j1s2';
+          if (isSR) {
+            savedUser.id = 'nzkkjimuewak3uwtcztzkbq7j1s2';
+            savedUser.name = 'SR Mobile Zone';
+            savedUser.email = 'srmobilezone000@gmail.com';
+            savedUser.username = 'srmobilezone';
+            saveToLocal('phonesell_auth_user', savedUser);
+          }
           setCurrentUser(savedUser);
           const uid = savedUser.id || 'default_store_owner';
 
           // Attempt settings load
           loadSettingsFromFirestore(uid).then(remoteSettings => {
             if (remoteSettings && remoteSettings.storeName) {
+              if (isSR) {
+                remoteSettings.storeName = 'SR Mobile Zone';
+                remoteSettings.email = 'srmobilezone000@gmail.com';
+                remoteSettings.ownerId = 'nzkkjimuewak3uwtcztzkbq7j1s2';
+              }
               setSettings(remoteSettings);
               setDeviceCredits(remoteSettings.deviceCredits ?? 0);
             }
           }).catch(() => {});
 
-          // Subscribe Firestore collections if online/authenticated
-          try {
-            subscriptions.push(subscribeCollectionFromFirestore<Product>('products', uid, setProducts));
-            subscriptions.push(subscribeCollectionFromFirestore<ProductCategory>('categories', uid, (remoteCategories) => {
-              if (remoteCategories && remoteCategories.length > 0) {
-                setCategories(remoteCategories);
-                saveToLocal(STORAGE_KEYS.CATEGORIES, remoteCategories);
-              }
-            }));
-            subscriptions.push(subscribeCollectionFromFirestore<Sale>('sales', uid, setSales));
-            subscriptions.push(subscribeCollectionFromFirestore<Installment>('installments', uid, setInstallments));
-            subscriptions.push(subscribeCollectionFromFirestore<ReturnClaim>('returns', uid, setReturns));
-            subscriptions.push(subscribeCollectionFromFirestore<Supplier>('suppliers', uid, setSuppliers));
-            subscriptions.push(subscribeCollectionFromFirestore<Purchase>('purchases', uid, setPurchases));
-            subscriptions.push(subscribeCollectionFromFirestore<RepairTicket>('repairs', uid, setRepairs));
-            subscriptions.push(subscribeCollectionFromFirestore<Expense>('expenses', uid, setExpenses));
-            subscriptions.push(subscribeCollectionFromFirestore<CustomerCreditProfile>('customer_profiles', uid, setCustomerProfiles));
-            subscriptions.push(subscribeCollectionFromFirestore<Device>('devices', uid, setDevices));
-            subscriptions.push(subscribeCollectionFromFirestore<UsedBuyRecord>('used_buys', uid, setUsedBuys));
-            subscriptions.push(subscribeCollectionFromFirestore<StaffMember>('staff', uid, setStaff));
-            subscriptions.push(subscribeCollectionFromFirestore<AccountEntry>('accounts', uid, setAccounts));
-            subscriptions.push(subscribeCollectionFromFirestore<JournalTransaction>('journal', uid, setJournalEntries));
-            subscriptions.push(subscribeCollectionFromFirestore<SMSLog>('sms_logs', uid, setSmsLogs));
-            subscriptions.push(subscribeCollectionFromFirestore<ChatMessage>('chat_messages', uid, setChatMessages));
-          } catch (e) {
-            console.warn('Subscription notice:', e);
+          // Subscribe Firestore collections if not inspecting
+          if (!isImpersonatingRef.current) {
+            activeSubsRef.current = subscribeAllCollections(uid, savedUser.email);
           }
         } else {
           // Explicitly logged out: Clear all store state to empty array
@@ -531,7 +775,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     return () => {
       unsubscribe();
-      subscriptions.forEach(unsub => unsub?.());
+      activeSubsRef.current.forEach(unsub => unsub?.());
+      activeSubsRef.current = [];
     };
   }, []);
 
@@ -690,7 +935,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const now = new Date();
     const invoiceNumber = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}-${String(sales.length + 1).padStart(4, '0')}`;
-    const currentOwnerId = user?.uid || currentUser?.id || 'default_store_owner';
+    const currentOwnerId = getActiveOwnerId();
 
     // Prepare Sale Items safely
     const items = cart.map(item => {
@@ -920,7 +1165,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Products CRUD - Direct Firebase Firestore Persistence
   const addProduct = (productData: Omit<Product, 'id' | 'ownerId' | 'createdAt'>) => {
-    const ownerId = user?.uid || currentUser?.id;
+    const ownerId = getActiveOwnerId();
     if (!ownerId) return;
     const newProd: Product = {
       ...productData,
@@ -933,7 +1178,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateProduct = (id: string, updates: Partial<Product>) => {
-    const ownerId = user?.uid || currentUser?.id;
+    const ownerId = getActiveOwnerId();
     setProducts(prev => prev.map(p => {
       if (p.id === id) {
         const updated = { ...p, ...updates, updatedAt: new Date().toISOString() };
@@ -954,7 +1199,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (products.length > 0) {
       const existingNames = new Set(categories.map(c => c.name.trim().toLowerCase()));
       const missing: ProductCategory[] = [];
-      const ownerId = user?.uid || currentUser?.id || 'default_store_owner';
+      const ownerId = getActiveOwnerId();
 
       products.forEach(p => {
         if (p.category && p.category.trim() && !existingNames.has(p.category.trim().toLowerCase())) {
@@ -987,7 +1232,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Categories CRUD
   const addCategory = (categoryData: Omit<ProductCategory, 'id' | 'ownerId' | 'createdAt'>): ProductCategory => {
-    const ownerId = user?.uid || currentUser?.id || 'default_store_owner';
+    const ownerId = getActiveOwnerId();
     const newCat: ProductCategory = {
       ...categoryData,
       id: `cat_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -1006,7 +1251,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateCategory = (id: string, updates: Partial<ProductCategory>, updateProductReferences: boolean = true) => {
-    const ownerId = user?.uid || currentUser?.id;
+    const ownerId = getActiveOwnerId();
     let oldName = '';
     
     setCategories(prev => {
@@ -1043,7 +1288,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const target = categories.find(c => c.id === id);
     if (!target) return { success: false, message: 'ক্যাটাগরি খুঁজে পাওয়া যায়নি!' };
 
-    const ownerId = user?.uid || currentUser?.id;
+    const ownerId = getActiveOwnerId();
     const affectedProducts = products.filter(p => p.category === target.name);
 
     if (affectedProducts.length > 0) {
@@ -1076,7 +1321,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Installment schedule payment - Direct Firebase Firestore Persistence
   const recordInstallmentPayment = (installmentId: string, scheduleId: string, amount: number) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const now = new Date();
     let receiptData: any = null;
 
@@ -1161,7 +1406,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Collect due payment - Direct Firebase Firestore Persistence
   const collectDuePayment = (saleId: string, amount: number) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     let receiptData: any = null;
 
     setSales(prev => prev.map(sale => {
@@ -1212,7 +1457,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Customer Credit Profile Management - Direct Firebase Firestore Persistence
   const updateCustomerCreditProfile = (profile: CustomerCreditProfile) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const cleanPhone = profile.phone;
     const profileToSave: CustomerCreditProfile = {
       ...profile,
@@ -1234,7 +1479,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Follow-Up Reminders & Diary - Direct Firebase Firestore Persistence
   const addInstallmentFollowUp = (installmentId: string, log: Omit<FollowUpLog, 'id' | 'date'>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const newLog: FollowUpLog = {
       ...log,
       id: `flw_${Date.now()}`,
@@ -1252,7 +1497,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const addSaleFollowUp = (saleId: string, log: Omit<FollowUpLog, 'id' | 'date'>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const newLog: FollowUpLog = {
       ...log,
       id: `flw_${Date.now()}`,
@@ -1302,7 +1547,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       autoUnlockLinkedDevice?: boolean;
     }
   ) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const now = new Date();
     const method = options?.paymentMethod || 'cash';
     const effectivePenalty = options?.waivePenalty ? 0 : (options?.penaltyAmount || 0);
@@ -1466,7 +1711,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Reverse / Void an installment payment (Error correction)
   const reverseInstallmentPayment = (installmentId: string, scheduleId: string, reason?: string) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const now = new Date();
 
     setInstallments(prev => prev.map(inst => {
@@ -1550,7 +1795,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       autoUnlockLinkedDevice?: boolean;
     }
   ) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const now = new Date();
     const method = options?.paymentMethod || 'cash';
     let receiptData: any = null;
@@ -1618,7 +1863,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Supplier CRUD & Payment - Direct Firebase Firestore Persistence
   const addSupplier = (supplierData: Omit<Supplier, 'id' | 'ownerId' | 'createdAt' | 'balanceDue' | 'totalPurchased' | 'totalPaid'>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const newSupplier: Supplier = {
       ...supplierData,
       id: `supp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -1633,7 +1878,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateSupplier = (id: string, updates: Partial<Supplier>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     setSuppliers(prev => prev.map(s => {
       if (s.id === id) {
         const updated = { ...s, ...updates, updatedAt: new Date().toISOString() };
@@ -1650,7 +1895,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const recordSupplierPayment = (supplierId: string, amount: number, paymentMethod: string, note?: string) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     setSuppliers(prev => prev.map(s => {
       if (s.id !== supplierId) return s;
       const newDue = Math.max(0, s.balanceDue - amount);
@@ -1693,7 +1938,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     note?: string;
     purchaseDate: string;
   }) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const supplier = suppliers.find(s => s.id === purchaseData.supplierId);
     const subtotal = purchaseData.items.reduce((sum, item) => sum + item.totalCost, 0);
     const addCost = purchaseData.additionalCost || 0;
@@ -1764,7 +2009,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Repair / Servicing Management - Direct Firebase Firestore Persistence
   const addRepairTicket = (ticketData: Omit<RepairTicket, 'id' | 'ownerId' | 'createdAt' | 'ticketNumber' | 'dueAmount'>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const dueAmount = Math.max(0, ticketData.estimatedCost - ticketData.advancePaid);
     const newTicket: RepairTicket = {
       ...ticketData,
@@ -1781,7 +2026,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateRepairStatus = (id: string, status: RepairStatus, notes?: string, finalCost?: number, paidAdditional?: number) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     setRepairs(prev => prev.map(ticket => {
       if (ticket.id !== id) return ticket;
       const cost = finalCost !== undefined ? finalCost : (ticket.finalCost || ticket.estimatedCost);
@@ -1810,7 +2055,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Expense Management - Direct Firebase Firestore Persistence
   const addExpense = (expenseData: Omit<Expense, 'id' | 'ownerId' | 'createdAt'>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const newExpense: Expense = {
       ...expenseData,
       id: `exp_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -1856,7 +2101,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Warranty / Returns - Direct Firebase Firestore Persistence
   const addReturnClaim = (claim: Omit<ReturnClaim, 'id' | 'ownerId' | 'createdAt'>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const newClaim: ReturnClaim = {
       ...claim,
       id: `claim_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
@@ -1868,7 +2113,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateClaimStatus = (id: string, status: ClaimStatus, notes?: string) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     setReturns(prev => prev.map(c => {
       if (c.id === id) {
         const updatedClaim: ReturnClaim = {
@@ -1886,7 +2131,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Update Settings - Direct Firebase Firestore Persistence
   const updateSettings = (newSettings: Partial<StoreSettings>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const merged = { ...settings, ...newSettings };
     setSettings(merged);
     if (ownerId) saveSettingsToFirestore(merged, ownerId);
@@ -1928,7 +2173,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       version: '2.0.0',
       exportDate: new Date().toISOString(),
       userEmail: user?.email || currentUser?.email,
-      ownerId: user?.uid || currentUser?.id,
+      ownerId: getActiveOwnerId(),
       data: {
         products,
         categories,
@@ -1965,7 +2210,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const restoreBackup = (jsonStr: string) => {
     try {
       const parsed = JSON.parse(jsonStr);
-      const ownerId = user?.uid || currentUser?.id;
+      const ownerId = getActiveOwnerId();
       if (!ownerId) {
         return { success: false, message: 'রিস্টোর করতে প্রথমে ফায়ারবেজে লগইন করুন।' };
       }
@@ -2168,7 +2413,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const addBranch = (newBranch: BranchInfo) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const updatedBranches = [...branches.filter(b => b.id !== newBranch.id), newBranch];
     const newSettings = { ...settings, branches: updatedBranches };
     setSettings(newSettings);
@@ -2176,7 +2421,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateBranch = (branchId: string, updates: Partial<BranchInfo>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const updatedBranches = branches.map(b => b.id === branchId ? { ...b, ...updates } : b);
     const newSettings = { ...settings, branches: updatedBranches };
     setSettings(newSettings);
@@ -2184,7 +2429,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const deleteBranch = (branchId: string) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const updatedBranches = branches.filter(b => b.id !== branchId);
     const newSettings = { ...settings, branches: updatedBranches };
     setSettings(newSettings);
@@ -2253,7 +2498,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Enterprise Locker & Device Control - Direct Firebase Firestore Persistence
   const addDevice = (deviceData: Omit<Device, 'id' | 'ownerId' | 'enrolledAt' | 'lastSyncAt'>): Device => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const newDevice: Device = {
       ...deviceData,
       id: `DEV-${Date.now().toString().slice(-4)}`,
@@ -2272,7 +2517,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const updateDevice = (id: string, updates: Partial<Device>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     setDevices(prev => prev.map(d => {
       if (d.id === id) {
         const updated = { ...d, ...updates };
@@ -2289,7 +2534,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const toggleDeviceLock = (deviceId: string, reason?: string) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     setDevices(prev => prev.map(d => {
       if (d.id === deviceId) {
         const newStatus: 'LOCKED' | 'UNLOCKED' = d.lockStatus === 'LOCKED' ? 'UNLOCKED' : 'LOCKED';
@@ -2316,7 +2561,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const issueDeviceCommand = (deviceId: string, command: string, reason?: string) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     setDevices(prev => prev.map(d => {
       if (d.id === deviceId) {
         const newCommand: any = {
@@ -2356,7 +2601,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const addDeviceCredits = (count: number) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     setDeviceCredits(c => {
       const next = c + count;
       if (ownerId) saveSettingsToFirestore({ ...settings, deviceCredits: next }, ownerId);
@@ -2366,7 +2611,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Used Buy (পুরনো ফোন কেনা) - Direct Firebase Firestore Persistence
   const addUsedBuy = (record: Omit<UsedBuyRecord, 'id' | 'ownerId' | 'createdAt'>): UsedBuyRecord => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const newRecord: UsedBuyRecord = {
       ...record,
       id: `UB-${Date.now()}`,
@@ -2385,7 +2630,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Staff Management - Direct Firebase Firestore Persistence
   const addStaff = (member: Omit<StaffMember, 'id' | 'ownerId'>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const newMember: StaffMember = {
       ...member,
       id: `STF-${Date.now()}`,
@@ -2396,7 +2641,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const toggleStaffStatus = (id: string) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     setStaff(prev => prev.map(s => {
       if (s.id === id) {
         const updated = { ...s, active: !s.active };
@@ -2409,7 +2654,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Accounting & Journal - Direct Firebase Firestore Persistence
   const addJournalEntry = (entry: Omit<JournalTransaction, 'id'>) => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const newEntry: JournalTransaction = {
       ...entry,
       id: `JRN-${Date.now()}`
@@ -2420,7 +2665,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // SMS System - Direct Firebase Firestore Persistence
   const sendSms = (phone: string, recipientName: string, message: string, type: SMSLog['type'] = 'CUSTOM') => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const newLog: SMSLog = {
       id: `SMS-${Date.now()}`,
       phone,
@@ -2437,7 +2682,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Support Chat - Direct Firebase Firestore Persistence
   const sendChatMessage = (text: string, sender: 'shop' | 'customer' = 'shop', customerPhone: string = '01712345678') => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const newMsg: ChatMessage = {
       id: `CH-${Date.now()}`,
       sender,
@@ -2453,7 +2698,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Void Sale
   const voidSale = (saleId: string, reason: string = 'Voided by Admin') => {
-    const ownerId = user?.uid || currentUser?.id || '';
+    const ownerId = getActiveOwnerId();
     const sale = sales.find(s => s.id === saleId);
     if (!sale) return { success: false, message: 'Sale not found' };
     if (sale.status === 'cancelled') return { success: false, message: 'Sale is already voided' };
@@ -2505,6 +2750,359 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const deleteParkedCart = (id: string) => {
     setParkedCarts(prev => prev.filter(p => p.id !== id));
   };
+
+  // --- SaaS Super Admin Platform Handlers ---
+  const addAuditLog = (
+    action: string, 
+    category: SecurityAuditLog['category'], 
+    details: string, 
+    status: SecurityAuditLog['status'] = 'success'
+  ) => {
+    const actor = currentUser?.email || user?.email || 'system';
+    const newLog: SecurityAuditLog = {
+      id: `LOG-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      timestamp: new Date().toISOString(),
+      actorEmail: actor,
+      action,
+      category,
+      details,
+      status
+    };
+    setAuditLogs(prev => [newLog, ...prev.slice(0, 499)]); // Retain 500 audit entries
+  };
+
+  const updateTenantStatus = (tenantId: string, status: TenantAccount['status'], notes?: string) => {
+    setTenants(prev => prev.map(t => {
+      if (t.id === tenantId) {
+        return {
+          ...t,
+          status,
+          notes: notes !== undefined ? notes : t.notes,
+          lastActive: new Date().toISOString()
+        };
+      }
+      return t;
+    }));
+    addAuditLog('TENANT_STATUS_UPDATE', 'TENANT', `Tenant ${tenantId} status set to ${status}. Notes: ${notes || 'N/A'}`);
+  };
+
+  const deleteTenantRecord = (tenantId: string) => {
+    setTenants(prev => prev.filter(t => t.id !== tenantId));
+    addAuditLog('TENANT_REMOVED', 'TENANT', `Tenant record ${tenantId} removed from registry`, 'warning');
+  };
+
+  const createBroadcast = (broadcast: Omit<SystemBroadcast, 'id' | 'createdAt' | 'authorEmail'>) => {
+    const author = currentUser?.email || user?.email || 'maraju921@gmail.com';
+    const newBc: SystemBroadcast = {
+      ...broadcast,
+      id: `BC-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      authorEmail: author
+    };
+    setBroadcasts(prev => [newBc, ...prev]);
+    addAuditLog('BROADCAST_CREATED', 'SECURITY', `System broadcast sent: "${broadcast.title}" (Priority: ${broadcast.priority})`);
+  };
+
+  const toggleBroadcastStatus = (id: string) => {
+    setBroadcasts(prev => prev.map(b => b.id === id ? { ...b, isActive: !b.isActive } : b));
+    addAuditLog('BROADCAST_TOGGLED', 'SECURITY', `Broadcast ${id} active status toggled`);
+  };
+
+  const deleteBroadcast = (id: string) => {
+    setBroadcasts(prev => prev.filter(b => b.id !== id));
+    addAuditLog('BROADCAST_DELETED', 'SECURITY', `Broadcast ${id} permanently removed`);
+  };
+
+  const dismissBroadcast = (id: string) => {
+    setBroadcasts(prev => prev.map(b => b.id === id ? { ...b, isActive: false } : b));
+  };
+
+  const updatePlatformConfig = (updates: Partial<PlatformConfig>) => {
+    setPlatformConfig(prev => ({
+      ...prev,
+      ...updates,
+      lastUpdated: new Date().toISOString()
+    }));
+    addAuditLog('PLATFORM_CONFIG_UPDATED', 'MAINTENANCE', `Updated config flags: ${Object.keys(updates).join(', ')}`);
+  };
+
+  const impersonateTenant = async (ownerEmail: string, storeName: string, ownerUid?: string) => {
+    const isSR = ownerEmail === 'srmobilezone000@gmail.com' || 
+                 ownerEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' ||
+                 ownerUid === 'nzkkjimuewak3uwtcztzkbq7j1s2' ||
+                 storeName === 'SR Mobile Zone';
+
+    const existingTenant = tenants.find(t => 
+      (t.ownerEmail && t.ownerEmail.toLowerCase() === ownerEmail.toLowerCase()) || 
+      t.id === ownerUid || 
+      t.ownerUid === ownerUid ||
+      (isSR && (t.ownerUid === 'nzkkjimuewak3uwtcztzkbq7j1s2' || t.ownerEmail === 'srmobilezone000@gmail.com'))
+    );
+    const targetUid = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : (ownerUid || existingTenant?.ownerUid || ownerEmail);
+    const targetEmail = isSR ? 'srmobilezone000@gmail.com' : (ownerEmail || existingTenant?.ownerEmail || '');
+    const targetName = isSR ? 'SR Mobile Zone' : (storeName || existingTenant?.storeName || 'PhoneSell Store');
+
+    // 1. Snapshot super admin data before inspecting
+    if (!isImpersonatingRef.current) {
+      superAdminBackupRef.current = {
+        settings,
+        products,
+        sales,
+        categories,
+        installments,
+        returns,
+        suppliers,
+        purchases,
+        repairs,
+        expenses,
+        customerProfiles,
+        devices,
+        usedBuys,
+        staff,
+        accounts,
+        journalEntries,
+        smsLogs,
+        chatMessages
+      };
+    }
+    isImpersonatingRef.current = true;
+
+    setImpersonatingTenant({
+      email: targetEmail,
+      name: targetName,
+      ownerUid: targetUid
+    });
+
+    // 2. Unsubscribe current active listeners
+    activeSubsRef.current.forEach(u => u?.());
+    activeSubsRef.current = [];
+
+    // 3. Load tenant settings
+    try {
+      let tenantSettings = await loadSettingsFromFirestore(targetUid);
+      if (!tenantSettings && targetEmail) {
+        tenantSettings = await loadSettingsFromFirestore(targetEmail);
+      }
+      if (!tenantSettings || !tenantSettings.storeName) {
+        const localSet = loadUserFromLocal<StoreSettings | null>('store_settings', targetEmail, null) 
+                      || loadUserFromLocal<StoreSettings | null>('store_settings', targetUid, null);
+        if (localSet && localSet.storeName) {
+          tenantSettings = localSet;
+        }
+      }
+      if (tenantSettings && tenantSettings.storeName) {
+        setSettings(tenantSettings);
+        setDeviceCredits(tenantSettings.deviceCredits ?? 0);
+      } else {
+        setSettings({
+          ...DEFAULT_SETTINGS,
+          ownerId: targetUid,
+          storeName: targetName,
+          email: targetEmail,
+          phone: existingTenant?.phone || ''
+        });
+        setDeviceCredits(0);
+      }
+    } catch {
+      setSettings({
+        ...DEFAULT_SETTINGS,
+        ownerId: targetUid,
+        storeName: targetName,
+        email: targetEmail
+      });
+    }
+
+    // 4. Subscribe all collections scoped to targetUid
+    activeSubsRef.current = subscribeAllCollections(targetUid, targetEmail);
+
+    addAuditLog('IMPERSONATION_STARTED', 'SECURITY', `Super Admin inspects tenant shop: ${targetName} (${targetEmail}) [UID: ${targetUid}]`, 'warning');
+  };
+
+  const exitImpersonation = () => {
+    if (impersonatingTenant) {
+      addAuditLog('IMPERSONATION_ENDED', 'SECURITY', `Super Admin stopped impersonation of ${impersonatingTenant.email}`);
+    }
+    isImpersonatingRef.current = false;
+    setImpersonatingTenant(null);
+
+    // Unsubscribe tenant listeners
+    activeSubsRef.current.forEach(u => u?.());
+    activeSubsRef.current = [];
+
+    // Restore super admin original state
+    if (superAdminBackupRef.current) {
+      const b = superAdminBackupRef.current;
+      setSettings(b.settings);
+      setProducts(b.products);
+      setSales(b.sales);
+      setCategories(b.categories);
+      setInstallments(b.installments);
+      setReturns(b.returns);
+      setSuppliers(b.suppliers);
+      setPurchases(b.purchases);
+      setRepairs(b.repairs);
+      setExpenses(b.expenses);
+      setCustomerProfiles(b.customerProfiles);
+      setDevices(b.devices);
+      setUsedBuys(b.usedBuys);
+      setStaff(b.staff);
+      setAccounts(b.accounts);
+      setJournalEntries(b.journalEntries);
+      setSmsLogs(b.smsLogs);
+      setChatMessages(b.chatMessages);
+    }
+
+    // Re-subscribe Super Admin's data
+    const superUid = currentUser?.id || user?.uid || 'default_store_owner';
+    activeSubsRef.current = subscribeAllCollections(superUid, (currentUser?.email || user?.email) || undefined);
+  };
+
+  // Comprehensive discovery of all previously registered shops from Firestore & Local Storage
+  const refreshTenantRegistry = useCallback(async () => {
+    try {
+      const mergedMap = new Map<string, TenantAccount>();
+
+      // 1. Seed existing registered tenants with SR Mobile Zone update
+      tenants.forEach(t => {
+        if (t.ownerEmail) {
+          const isSR = t.ownerEmail.toLowerCase().includes('nzkkjimuewak3uwtcztzkbq7j1s2') || 
+                       t.ownerUid === 'nzkkjimuewak3uwtcztzkbq7j1s2' ||
+                       t.ownerEmail === 'srmobilezone000@gmail.com';
+          if (isSR) {
+            mergedMap.set('srmobilezone000@gmail.com', {
+              ...t,
+              id: 'tenant-nzkkjimuewak3uwtcztzkbq7j1s2',
+              storeName: 'SR Mobile Zone',
+              ownerEmail: 'srmobilezone000@gmail.com',
+              ownerName: 'SR Mobile Zone',
+              ownerUid: 'nzkkjimuewak3uwtcztzkbq7j1s2'
+            });
+          } else {
+            mergedMap.set(t.ownerEmail.toLowerCase().trim(), t);
+          }
+        }
+      });
+
+      // 2. Discover from browser local storage across past sessions
+      const localDiscovered = discoverLocalTenants();
+      localDiscovered.forEach(item => {
+        let cleanEmail = item.email.toLowerCase().trim();
+        const isSR = cleanEmail.includes('nzkkjimuewak3uwtcztzkbq7j1s2') || 
+                     cleanEmail === 'srmobilezone000@gmail.com' ||
+                     item.ownerKey.includes('nzkkjimuewak3uwtcztzkbq7j1s2');
+        if (isSR) {
+          cleanEmail = 'srmobilezone000@gmail.com';
+        }
+
+        const existing = mergedMap.get(cleanEmail);
+        if (existing) {
+          mergedMap.set(cleanEmail, {
+            ...existing,
+            storeName: isSR ? 'SR Mobile Zone' : (existing.storeName || item.storeName),
+            ownerUid: isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : existing.ownerUid,
+            productCount: Math.max(existing.productCount || 0, item.productCount || 0)
+          });
+        } else {
+          mergedMap.set(cleanEmail, {
+            id: `tenant-${isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : cleanEmail.replace(/[^a-z0-9]/g, '-')}`,
+            storeName: isSR ? 'SR Mobile Zone' : (item.storeName || 'PhoneSell Store'),
+            ownerEmail: cleanEmail,
+            ownerUid: isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : undefined,
+            ownerName: isSR ? 'SR Mobile Zone' : cleanEmail.split('@')[0],
+            phone: '',
+            address: '',
+            status: 'active',
+            createdAt: item.lastUpdated,
+            lastActive: item.lastUpdated,
+            branchCount: 1,
+            productCount: item.productCount || 0,
+            salesCount: 0,
+            totalRevenue: 0,
+            notes: isSR ? 'SR Mobile Zone' : 'Discovered from local session profile'
+          });
+        }
+      });
+
+      // 3. Discover from Firestore remote store_settings documents
+      const remoteTenants = await fetchAllFirestoreTenants();
+      remoteTenants.forEach(rt => {
+        let emailFromSetting = '';
+        const isSR = rt.ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || 
+                     rt.id === 'nzkkjimuewak3uwtcztzkbq7j1s2' || 
+                     rt.settings.email === 'srmobilezone000@gmail.com' ||
+                     rt.settings.email === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com';
+
+        if (isSR) {
+          emailFromSetting = 'srmobilezone000@gmail.com';
+          mergedMap.delete('nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com');
+        } else if (rt.settings.email && rt.settings.email.includes('@')) {
+          emailFromSetting = rt.settings.email.toLowerCase().trim();
+        } else if (rt.settings.phone && rt.settings.phone.includes('@')) {
+          emailFromSetting = rt.settings.phone.toLowerCase().trim();
+        } else if (rt.ownerId.includes('@')) {
+          emailFromSetting = rt.ownerId.toLowerCase().trim();
+        } else {
+          emailFromSetting = `${rt.ownerId}@phonesellpro.com`;
+        }
+
+        const cleanKey = emailFromSetting.toLowerCase().trim();
+        const existing = mergedMap.get(cleanKey);
+
+        const storeName = isSR ? 'SR Mobile Zone' : (rt.settings.storeName || 'PhoneSell Store');
+        const ownerName = isSR ? 'SR Mobile Zone' : cleanKey.split('@')[0];
+        const ownerUid = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : rt.ownerId;
+
+        if (existing) {
+          mergedMap.set(cleanKey, {
+            ...existing,
+            storeName,
+            ownerName,
+            ownerEmail: cleanKey,
+            ownerUid,
+            phone: rt.settings.phone || existing.phone,
+            address: rt.settings.address || existing.address,
+            branchCount: rt.settings.branches?.length || existing.branchCount,
+            productCount: Math.max(existing.productCount || 0, rt.productCount || 0),
+            salesCount: Math.max(existing.salesCount || 0, rt.salesCount || 0),
+            totalRevenue: Math.max(existing.totalRevenue || 0, rt.totalRevenue || 0),
+            lastActive: new Date().toISOString()
+          });
+        } else {
+          mergedMap.set(cleanKey, {
+            id: `tenant-${ownerUid}`,
+            storeName,
+            ownerEmail: cleanKey,
+            ownerUid,
+            ownerName,
+            phone: rt.settings.phone || '',
+            address: rt.settings.address || '',
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            lastActive: new Date().toISOString(),
+            branchCount: rt.settings.branches?.length || 1,
+            productCount: rt.productCount || 0,
+            salesCount: rt.salesCount || 0,
+            totalRevenue: rt.totalRevenue || 0,
+            notes: isSR ? 'SR Mobile Zone (Live Cloud Store)' : 'Discovered from live Firestore Cloud'
+          });
+        }
+      });
+
+      const updatedList = Array.from(mergedMap.values());
+      setTenants(updatedList);
+      saveToLocal(STORAGE_KEYS.PLATFORM_TENANTS, updatedList);
+      addAuditLog('TENANT_REGISTRY_SYNC', 'TENANT', `Auto-discovered ${updatedList.length} shops across cloud and local profiles`);
+    } catch (err) {
+      console.warn('refreshTenantRegistry error:', err);
+    }
+  }, [tenants]);
+
+  // Run tenant discovery automatically on initial mount for Super Admin
+  useEffect(() => {
+    if (isSuperAdmin) {
+      refreshTenantRegistry();
+    }
+  }, [isSuperAdmin]);
 
   return (
     <AppContext.Provider value={{
@@ -2624,7 +3222,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       loginGoogle,
       loginEmail,
       registerEmail,
-      loginStaff
+      loginStaff,
+      isSuperAdmin,
+      tenants,
+      broadcasts,
+      auditLogs,
+      platformConfig,
+      updateTenantStatus,
+      deleteTenantRecord,
+      createBroadcast,
+      toggleBroadcastStatus,
+      deleteBroadcast,
+      dismissBroadcast,
+      updatePlatformConfig,
+      addAuditLog,
+      impersonateTenant,
+      exitImpersonation,
+      impersonatingTenant,
+      refreshTenantRegistry
     }}>
       {children}
     </AppContext.Provider>

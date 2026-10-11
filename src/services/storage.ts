@@ -49,6 +49,10 @@ export const STORAGE_KEYS = {
   CHAT_MESSAGES: 'chat_messages',
   FAVOURITES: 'favourites',
   DEVICE_CREDITS: 'credits',
+  PLATFORM_TENANTS: 'platform_tenants',
+  PLATFORM_BROADCASTS: 'platform_broadcasts',
+  PLATFORM_AUDIT_LOGS: 'platform_audit_logs',
+  PLATFORM_CONFIG: 'platform_config',
 };
 
 export const DEFAULT_SETTINGS: StoreSettings = {
@@ -162,23 +166,44 @@ export async function deleteDocFromFirestore(
 }
 
 /**
- * Real-time listener for a Firestore collection scoped to a user's ownerId
+ * Real-time listener for a Firestore collection scoped to a user's ownerId (with alias support)
  */
 export function subscribeCollectionFromFirestore<T>(
   collectionName: string, 
   ownerId: string, 
-  onData: (data: T[]) => void
+  onData: (data: T[]) => void,
+  ownerIdAliases?: string[]
 ): Unsubscribe | null {
   if (!ownerId) return null;
 
   try {
-    const q = query(collection(db, collectionName), where('ownerId', '==', ownerId));
+    const isSR = ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || 
+                 ownerId === 'srmobilezone000@gmail.com' ||
+                 ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com';
+
+    const effectiveList = Array.from(new Set([
+      ownerId,
+      ...(ownerIdAliases || []),
+      ...(isSR ? ['nzkkjimuewak3uwtcztzkbq7j1s2', 'srmobilezone000@gmail.com', 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com'] : [])
+    ]));
+
+    const q = effectiveList.length > 1
+      ? query(collection(db, collectionName), where('ownerId', 'in', effectiveList))
+      : query(collection(db, collectionName), where('ownerId', '==', ownerId));
+
     return onSnapshot(
       q, 
       (snapshot) => {
         const results: T[] = [];
+        const seenIds = new Set<string>();
         snapshot.forEach(docSnap => {
-          results.push(docSnap.data() as T);
+          const item = docSnap.data() as any;
+          if (item && item.id && !seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            results.push(item as T);
+          } else if (item && !item.id) {
+            results.push(item as T);
+          }
         });
         onData(results);
       },
@@ -193,17 +218,35 @@ export function subscribeCollectionFromFirestore<T>(
 }
 
 /**
- * Load remote collection once from Firestore
+ * Load remote collection once from Firestore (with alias support)
  */
 export async function loadCollectionFromFirestore<T>(collectionName: string, ownerId: string): Promise<T[]> {
   if (!ownerId) return [];
 
   try {
-    const q = query(collection(db, collectionName), where('ownerId', '==', ownerId));
+    const isSR = ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || 
+                 ownerId === 'srmobilezone000@gmail.com' ||
+                 ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com';
+
+    const effectiveList = isSR 
+      ? ['nzkkjimuewak3uwtcztzkbq7j1s2', 'srmobilezone000@gmail.com', 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com']
+      : [ownerId];
+
+    const q = effectiveList.length > 1
+      ? query(collection(db, collectionName), where('ownerId', 'in', effectiveList))
+      : query(collection(db, collectionName), where('ownerId', '==', ownerId));
+
     const snapshot = await getDocs(q);
     const results: T[] = [];
+    const seenIds = new Set<string>();
     snapshot.forEach(docSnap => {
-      results.push(docSnap.data() as T);
+      const item = docSnap.data() as any;
+      if (item && item.id && !seenIds.has(item.id)) {
+        seenIds.add(item.id);
+        results.push(item as T);
+      } else if (item && !item.id) {
+        results.push(item as T);
+      }
     });
     return results;
   } catch (error) {
@@ -217,9 +260,25 @@ export async function loadCollectionFromFirestore<T>(collectionName: string, own
  */
 export async function saveSettingsToFirestore(settings: StoreSettings, ownerId: string): Promise<void> {
   if (!ownerId) return;
+  const isSR = ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || 
+               ownerId === 'srmobilezone000@gmail.com' || 
+               ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' ||
+               settings.email === 'srmobilezone000@gmail.com' ||
+               settings.storeName === 'SR Mobile Zone';
+
+  const canonicalId = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : ownerId;
+  const canonicalSettings: StoreSettings = {
+    ...settings,
+    ownerId: canonicalId,
+    ...(isSR ? {
+      storeName: 'SR Mobile Zone',
+      email: 'srmobilezone000@gmail.com'
+    } : {})
+  };
+
   try {
-    const docRef = doc(db, 'store_settings', ownerId);
-    const cleaned = cleanForFirestore({ ...settings, ownerId });
+    const docRef = doc(db, 'store_settings', canonicalId);
+    const cleaned = cleanForFirestore(canonicalSettings);
     await setDoc(docRef, cleaned, { merge: true });
   } catch (error) {
     console.warn('Failed to save settings to Firestore:', error);
@@ -231,14 +290,30 @@ export async function saveSettingsToFirestore(settings: StoreSettings, ownerId: 
  */
 export async function loadSettingsFromFirestore(ownerId: string): Promise<StoreSettings | null> {
   if (!ownerId) return null;
-  try {
-    const docRef = doc(db, 'store_settings', ownerId);
-    const snap = await getDoc(docRef);
-    if (snap.exists()) {
-      return snap.data() as StoreSettings;
+  const isSR = ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || 
+               ownerId === 'srmobilezone000@gmail.com' || 
+               ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com';
+
+  const targetIds = isSR 
+    ? ['nzkkjimuewak3uwtcztzkbq7j1s2', 'srmobilezone000@gmail.com', 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com']
+    : [ownerId];
+
+  for (const tid of targetIds) {
+    try {
+      const docRef = doc(db, 'store_settings', tid);
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        const data = snap.data() as StoreSettings;
+        if (isSR) {
+          data.storeName = 'SR Mobile Zone';
+          data.email = 'srmobilezone000@gmail.com';
+          data.ownerId = 'nzkkjimuewak3uwtcztzkbq7j1s2';
+        }
+        return data;
+      }
+    } catch (error) {
+      console.warn(`Failed to load settings for ${tid}:`, error);
     }
-  } catch (error) {
-    console.warn('Failed to load settings from Firestore:', error);
   }
   return null;
 }
@@ -286,3 +361,151 @@ export function importDatabaseBackup(jsonString: string): { success: boolean; me
     return { success: false, message: 'ইনভ্যালিড ব্যাকআপ ফাইল ফরম্যাট' };
   }
 }
+
+/**
+ * Super Admin discovery: fetch all store_settings documents from Firestore
+ * and compute live product counts and sales from Firestore
+ */
+export async function fetchAllFirestoreTenants(): Promise<Array<{ id: string; settings: StoreSettings; ownerId: string; productCount: number; salesCount: number; totalRevenue: number }>> {
+  try {
+    const colRef = collection(db, 'store_settings');
+    const snap = await getDocs(colRef);
+    const list: Array<{ id: string; settings: StoreSettings; ownerId: string; productCount: number; salesCount: number; totalRevenue: number }> = [];
+
+    // Also get all products and sales that super admin can read to compute exact metrics
+    let allProducts: any[] = [];
+    let allSales: any[] = [];
+    try {
+      const prodSnap = await getDocs(collection(db, 'products'));
+      prodSnap.forEach(p => allProducts.push(p.data()));
+    } catch (e) {
+      console.warn('Could not list all products:', e);
+    }
+
+    try {
+      const salesSnap = await getDocs(collection(db, 'sales'));
+      salesSnap.forEach(s => allSales.push(s.data()));
+    } catch (e) {
+      console.warn('Could not list all sales:', e);
+    }
+
+    snap.forEach(docSnap => {
+      const data = docSnap.data() as StoreSettings;
+      let ownerId = data.ownerId || docSnap.id;
+
+      // Canonical mapping for SR Mobile Zone
+      if (ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || docSnap.id === 'nzkkjimuewak3uwtcztzkbq7j1s2' || data.email === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || data.email === 'srmobilezone000@gmail.com') {
+        ownerId = 'nzkkjimuewak3uwtcztzkbq7j1s2';
+        data.ownerId = 'nzkkjimuewak3uwtcztzkbq7j1s2';
+        data.email = 'srmobilezone000@gmail.com';
+        data.storeName = 'SR Mobile Zone';
+      }
+
+      // Filter products and sales for this ownerId (including legacy aliases)
+      const isSR = ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2';
+      const storeProducts = allProducts.filter(p => p && (p.ownerId === ownerId || (isSR && (p.ownerId === 'srmobilezone000@gmail.com' || p.ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com'))));
+      const storeSales = allSales.filter(s => s && (s.ownerId === ownerId || (isSR && (s.ownerId === 'srmobilezone000@gmail.com' || s.ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com'))));
+      const revenue = storeSales.reduce((sum, s) => sum + (s.total || s.totalAmount || 0), 0);
+
+      const existingIdx = list.findIndex(item => item.ownerId === ownerId);
+      if (existingIdx >= 0) {
+        list[existingIdx] = {
+          id: ownerId,
+          settings: { 
+            ...list[existingIdx].settings, 
+            ...data, 
+            ownerId, 
+            storeName: data.storeName || list[existingIdx].settings.storeName,
+            email: data.email || list[existingIdx].settings.email 
+          },
+          ownerId,
+          productCount: Math.max(list[existingIdx].productCount, storeProducts.length),
+          salesCount: Math.max(list[existingIdx].salesCount, storeSales.length),
+          totalRevenue: Math.max(list[existingIdx].totalRevenue, revenue)
+        };
+      } else {
+        list.push({
+          id: docSnap.id,
+          settings: data,
+          ownerId,
+          productCount: storeProducts.length,
+          salesCount: storeSales.length,
+          totalRevenue: revenue
+        });
+      }
+    });
+    return list;
+  } catch (error) {
+    console.warn('Super Admin fetchAllFirestoreTenants warning:', error);
+    return [];
+  }
+}
+
+/**
+ * Super Admin discovery: scan browser localStorage for any stores registered previously across emails
+ */
+export function discoverLocalTenants(): Array<{ ownerKey: string; storeName: string; email: string; productCount: number; lastUpdated: string }> {
+  const discovered: Array<{ ownerKey: string; storeName: string; email: string; productCount: number; lastUpdated: string }> = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key) continue;
+
+      // Check if key is store_settings or usr_*_store_settings
+      if (key.endsWith('store_settings')) {
+        try {
+          const val = JSON.parse(localStorage.getItem(key) || '{}');
+          if (val && (val.storeName || val.ownerId)) {
+            let email = '';
+            if (val.phone && val.phone.includes('@')) email = val.phone;
+            else if (val.ownerId && val.ownerId.includes('@')) email = val.ownerId;
+            else if (key.startsWith('usr_')) {
+              // Extract from usr_xxx_store_settings
+              const parts = key.replace('usr_', '').replace('_store_settings', '');
+              email = parts.replace(/_/g, '@');
+            }
+
+            // Also check corresponding products count in localStorage
+            let prodCount = 0;
+            const prefix = key.replace('_store_settings', '');
+            const prodKey = `${prefix}_products`;
+            try {
+              const savedProds = JSON.parse(localStorage.getItem(prodKey) || '[]');
+              if (Array.isArray(savedProds)) prodCount = savedProds.length;
+            } catch {}
+
+            // Also check default products key if ownerId matches
+            if (prodCount === 0) {
+              try {
+                const defaultProds = JSON.parse(localStorage.getItem('products') || '[]');
+                if (Array.isArray(defaultProds)) {
+                  const matching = defaultProds.filter((p: any) => p && (p.ownerId === val.ownerId || p.ownerId === email));
+                  if (matching.length > 0) prodCount = matching.length;
+                }
+              } catch {}
+            }
+
+            // Canonical mapping for SR Mobile Zone
+            if (email.includes('nzkkjimuewak3uwtcztzkbq7j1s2') || val.ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || email === 'srmobilezone000@gmail.com') {
+              email = 'srmobilezone000@gmail.com';
+              val.storeName = 'SR Mobile Zone';
+              val.ownerId = 'nzkkjimuewak3uwtcztzkbq7j1s2';
+            }
+
+            discovered.push({
+              ownerKey: key,
+              storeName: val.storeName || 'PhoneSell Store',
+              email: email || val.ownerId || 'unknown@phonesellpro.com',
+              productCount: prodCount,
+              lastUpdated: new Date().toISOString()
+            });
+          }
+        } catch {}
+      }
+    }
+  } catch (e) {
+    console.warn('LocalStorage tenant discovery warning:', e);
+  }
+  return discovered;
+}
+

@@ -16,6 +16,7 @@ import {
 import { AuthUser } from '../../types';
 import { loginWithGoogle, loginWithEmail, registerWithEmail } from '../../services/firebase';
 import { useApp } from '../../context/AppContext';
+import { isPlatformSuperAdmin } from '../../config/platformAdmin';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: AuthUser) => void;
@@ -84,17 +85,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const handleQuickLogin = (customEmail?: string, customName?: string) => {
     setIsLoading(true);
     const useEmail = customEmail?.trim().toLowerCase() || 'owner@phonesellpro.com';
-    const useName = customName?.trim() || (lang === 'bn' ? 'শপ ওনার' : 'Shop Owner');
+    const isSR = useEmail === 'srmobilezone000@gmail.com' || useEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || useEmail.includes('srmobilezone');
+    const useName = isSR ? 'SR Mobile Zone' : (customName?.trim() || (lang === 'bn' ? 'শপ ওনার' : 'Shop Owner'));
+    const resolvedId = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : `admin_${useEmail.replace(/[^a-z0-9]/g, '_')}`;
 
+    const isSuper = isPlatformSuperAdmin(useEmail);
     const authU: AuthUser = {
-      id: `admin_${useEmail.replace(/[^a-z0-9]/g, '_')}`,
+      id: resolvedId,
       name: useName,
-      username: useEmail.split('@')[0],
-      email: useEmail,
+      username: isSR ? 'srmobilezone' : useEmail.split('@')[0],
+      email: isSR ? 'srmobilezone000@gmail.com' : useEmail,
       role: 'SUPER_ADMIN',
       branch: 'ALL',
       phone: '+8801700000000',
       securityPin: '',
+      isPlatformAdmin: isSuper,
       lastLogin: new Date().toISOString()
     };
 
@@ -122,16 +127,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         return;
       }
       if (fbUser.email) {
+        const cleanEmail = fbUser.email.toLowerCase().trim();
+        const isSR = cleanEmail === 'srmobilezone000@gmail.com' || cleanEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || cleanEmail.includes('srmobilezone');
+        const resolvedId = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : fbUser.uid;
+        const resolvedName = isSR ? 'SR Mobile Zone' : (fbUser.displayName || fbUser.email.split('@')[0]);
+
+        const isSuper = isPlatformSuperAdmin(fbUser.email);
         const authU: AuthUser = {
-          id: fbUser.uid,
-          name: fbUser.displayName || fbUser.email.split('@')[0],
-          username: fbUser.email.split('@')[0],
-          email: fbUser.email,
+          id: resolvedId,
+          name: resolvedName,
+          username: isSR ? 'srmobilezone' : fbUser.email.split('@')[0],
+          email: isSR ? 'srmobilezone000@gmail.com' : fbUser.email,
           role: 'SUPER_ADMIN',
           branch: 'ALL',
           phone: fbUser.phoneNumber || '',
           securityPin: '',
           avatar: fbUser.photoURL || undefined,
+          isPlatformAdmin: isSuper,
           lastLogin: new Date().toISOString()
         };
         onLoginSuccess(authU);
@@ -188,15 +200,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       try {
         const fbUser = await registerWithEmail(cleanEmail, password, fullName.trim() || undefined);
         if (fbUser && fbUser.email) {
+          const isSR = cleanEmail === 'srmobilezone000@gmail.com' || cleanEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || cleanEmail.includes('srmobilezone');
+          const resolvedId = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : fbUser.uid;
+          const resolvedName = isSR ? 'SR Mobile Zone' : (fullName.trim() || fbUser.displayName || cleanEmail.split('@')[0]);
+
+          const isSuper = isPlatformSuperAdmin(fbUser.email);
           const authU: AuthUser = {
-            id: fbUser.uid,
-            name: fullName.trim() || fbUser.displayName || cleanEmail.split('@')[0],
-            username: cleanEmail.split('@')[0],
-            email: fbUser.email,
+            id: resolvedId,
+            name: resolvedName,
+            username: isSR ? 'srmobilezone' : cleanEmail.split('@')[0],
+            email: isSR ? 'srmobilezone000@gmail.com' : fbUser.email,
             role: 'SUPER_ADMIN',
             branch: 'ALL',
             phone: '',
             securityPin: '',
+            isPlatformAdmin: isSuper,
             lastLogin: new Date().toISOString()
           };
           onLoginSuccess(authU);
@@ -214,16 +232,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       try {
         const fbUser = await loginWithEmail(cleanEmail, password);
         if (fbUser && fbUser.email) {
+          const isSR = cleanEmail === 'srmobilezone000@gmail.com' || cleanEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || cleanEmail.includes('srmobilezone');
+          const resolvedId = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : fbUser.uid;
+          const resolvedName = isSR ? 'SR Mobile Zone' : (fbUser.displayName || cleanEmail.split('@')[0]);
+
+          const isSuper = isPlatformSuperAdmin(fbUser.email);
           const authU: AuthUser = {
-            id: fbUser.uid,
-            name: fbUser.displayName || cleanEmail.split('@')[0],
-            username: cleanEmail.split('@')[0],
-            email: fbUser.email,
+            id: resolvedId,
+            name: resolvedName,
+            username: isSR ? 'srmobilezone' : cleanEmail.split('@')[0],
+            email: isSR ? 'srmobilezone000@gmail.com' : fbUser.email,
             role: 'SUPER_ADMIN',
             branch: 'ALL',
             phone: fbUser.phoneNumber || '',
             securityPin: '',
             avatar: fbUser.photoURL || undefined,
+            isPlatformAdmin: isSuper,
             lastLogin: new Date().toISOString()
           };
           onLoginSuccess(authU);
