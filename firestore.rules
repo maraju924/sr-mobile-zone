@@ -24,33 +24,12 @@ service cloud.firestore {
     }
 
     function isOwner(ownerId) {
-      return isSignedIn() && (
-        isPlatformSuperAdmin() ||
-        request.auth.uid == ownerId ||
-        (request.auth.token.email != null && (
-          request.auth.token.email.lower() == 'srmobilezone000@gmail.com' ||
-          request.auth.token.email.lower() == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com'
-        ) && (
-          ownerId == 'nzkkjimuewak3uwtcztzkbq7j1s2' ||
-          ownerId == 'srmobilezone000@gmail.com' ||
-          ownerId == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' ||
-          ownerId == 'srmobilezone' ||
-          ownerId == 'tenant-nzkkjimuewak3uwtcztzkbq7j1s2' ||
-          ownerId == request.auth.uid
-        ))
-      );
-    }
-
-    function isPlatformSuperAdmin() {
-      return isSignedIn() && (
-        (request.auth.token.email != null && request.auth.token.email.lower() == 'maraju921@gmail.com') ||
-        request.auth.uid == 'admin_maraju921_gmail_com'
-      );
+      return isSignedIn() && request.auth.uid == ownerId;
     }
 
     // Product Validator
     function isValidProduct(data) {
-      return data.ownerId is string && isOwner(data.ownerId) &&
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
              data.sellingPrice is number && data.sellingPrice >= 0 &&
              data.stock is number &&
@@ -63,36 +42,36 @@ service cloud.firestore {
     }
 
     match /products/{productId} {
-      allow get: if isSignedIn() && (isOwner(existing().ownerId) || isPlatformSuperAdmin());
-      allow list: if isSignedIn() && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if isSignedIn() && isValidId(productId) && isValidProduct(incoming()) &&
-                       isOwner(incoming().ownerId);
+                       incoming().ownerId == request.auth.uid;
       allow update: if isSignedIn() && isValidId(productId) && isValidProduct(incoming()) &&
                        incoming().ownerId == existing().ownerId &&
-                       isOwner(existing().ownerId);
-      allow delete: if isSignedIn() && isValidId(productId) && isOwner(existing().ownerId);
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(productId) && existing().ownerId == request.auth.uid;
     }
 
     // Category Validator
     function isValidCategory(data) {
-      return data.ownerId is string && isOwner(data.ownerId) &&
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 100;
     }
 
     match /categories/{categoryId} {
-      allow get: if isSignedIn() && (isOwner(existing().ownerId) || isPlatformSuperAdmin());
-      allow list: if isSignedIn() && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if isSignedIn() && isValidId(categoryId) && isValidCategory(incoming()) &&
-                       isOwner(incoming().ownerId);
+                       incoming().ownerId == request.auth.uid;
       allow update: if isSignedIn() && isValidId(categoryId) && isValidCategory(incoming()) &&
                        incoming().ownerId == existing().ownerId &&
-                       isOwner(existing().ownerId);
-      allow delete: if isSignedIn() && isValidId(categoryId) && isOwner(existing().ownerId);
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(categoryId) && existing().ownerId == request.auth.uid;
     }
 
     // Sale Validator
     function isValidSale(data) {
-      return data.ownerId is string && isOwner(data.ownerId) &&
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
              data.invoiceNumber is string && data.invoiceNumber.size() > 0 && data.invoiceNumber.size() <= 50 &&
              data.total is number && data.total >= 0 &&
              data.paidAmount is number && data.paidAmount >= 0 &&
@@ -108,19 +87,19 @@ service cloud.firestore {
     }
 
     match /sales/{saleId} {
-      allow get: if isSignedIn() && (isOwner(existing().ownerId) || isPlatformSuperAdmin());
-      allow list: if isSignedIn() && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if isSignedIn() && isValidId(saleId) && isValidSale(incoming()) &&
-                       isOwner(incoming().ownerId);
+                       incoming().ownerId == request.auth.uid;
       allow update: if isSignedIn() && isValidId(saleId) && isValidSale(incoming()) &&
                        incoming().ownerId == existing().ownerId &&
-                       isOwner(existing().ownerId);
-      allow delete: if isSignedIn() && isValidId(saleId) && isOwner(existing().ownerId);
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(saleId) && existing().ownerId == request.auth.uid;
     }
 
     // Installment Validator
     function isValidInstallment(data) {
-      return data.ownerId is string && isOwner(data.ownerId) &&
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
              data.saleId is string && data.saleId.size() <= 100 &&
              data.customerName is string && data.customerName.size() <= 120 &&
              data.totalAmount is number && data.totalAmount >= 0 &&
@@ -132,19 +111,19 @@ service cloud.firestore {
     }
 
     match /installments/{installmentId} {
-      allow get: if isSignedIn() && (isOwner(existing().ownerId) || isPlatformSuperAdmin());
-      allow list: if isSignedIn() && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if isSignedIn() && isValidId(installmentId) && isValidInstallment(incoming()) &&
-                       isOwner(incoming().ownerId);
+                       incoming().ownerId == request.auth.uid;
       allow update: if isSignedIn() && isValidId(installmentId) && isValidInstallment(incoming()) &&
                        incoming().ownerId == existing().ownerId &&
-                       isOwner(existing().ownerId);
-      allow delete: if isSignedIn() && isValidId(installmentId) && isOwner(existing().ownerId);
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(installmentId) && existing().ownerId == request.auth.uid;
     }
 
     // Return & Warranty Claim Validator
     function isValidReturnClaim(data) {
-      return data.ownerId is string && isOwner(data.ownerId) &&
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
              data.productName is string && data.productName.size() <= 200 &&
              data.claimType is string && data.claimType.size() <= 50 &&
              data.status is string && data.status.size() <= 30 &&
@@ -156,22 +135,21 @@ service cloud.firestore {
     }
 
     match /returns/{returnId} {
-      allow get: if isSignedIn() && (isOwner(existing().ownerId) || isPlatformSuperAdmin());
-      allow list: if isSignedIn() && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if isSignedIn() && isValidId(returnId) && isValidReturnClaim(incoming()) &&
-                       isOwner(incoming().ownerId);
+                       incoming().ownerId == request.auth.uid;
       allow update: if isSignedIn() && isValidId(returnId) && isValidReturnClaim(incoming()) &&
                        incoming().ownerId == existing().ownerId &&
-                       isOwner(existing().ownerId);
-      allow delete: if isSignedIn() && isValidId(returnId) && isOwner(existing().ownerId);
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(returnId) && existing().ownerId == request.auth.uid;
     }
 
     // Store Settings Validator
     function isValidStoreSettings(data) {
-      return data.ownerId is string && (isOwner(data.ownerId) || isPlatformSuperAdmin()) &&
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
              data.storeName is string && data.storeName.size() > 0 && data.storeName.size() <= 150 &&
              (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
-             (!('email' in data) || (data.email is string && data.email.size() <= 120)) &&
              (!('address' in data) || (data.address is string && data.address.size() <= 250)) &&
              (!('vatPercent' in data) || (data.vatPercent is number && data.vatPercent >= 0 && data.vatPercent <= 100)) &&
              (!('currencySymbol' in data) || (data.currencySymbol is string && data.currencySymbol.size() <= 10)) &&
@@ -179,22 +157,19 @@ service cloud.firestore {
     }
 
     match /store_settings/{settingId} {
-      allow get: if isSignedIn() && (
-        isOwner(existing().ownerId) || 
-        isPlatformSuperAdmin() ||
-        ((request.auth.token.email != null && (request.auth.token.email.lower() == 'srmobilezone000@gmail.com' || request.auth.token.email.lower() == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com')) && (settingId == 'nzkkjimuewak3uwtcztzkbq7j1s2' || settingId == 'srmobilezone000@gmail.com' || settingId == 'srmobilezone'))
-      );
-      allow list: if isSignedIn() && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if isSignedIn() && isValidId(settingId) && isValidStoreSettings(incoming()) &&
-                       (isOwner(incoming().ownerId) || isPlatformSuperAdmin() || ((request.auth.token.email != null && (request.auth.token.email.lower() == 'srmobilezone000@gmail.com' || request.auth.token.email.lower() == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com')) && (settingId == 'nzkkjimuewak3uwtcztzkbq7j1s2' || settingId == 'srmobilezone000@gmail.com' || settingId == 'srmobilezone')));
+                       incoming().ownerId == request.auth.uid;
       allow update: if isSignedIn() && isValidId(settingId) && isValidStoreSettings(incoming()) &&
-                       (isOwner(incoming().ownerId) || isPlatformSuperAdmin() || ((request.auth.token.email != null && (request.auth.token.email.lower() == 'srmobilezone000@gmail.com' || request.auth.token.email.lower() == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com')) && (settingId == 'nzkkjimuewak3uwtcztzkbq7j1s2' || settingId == 'srmobilezone000@gmail.com' || settingId == 'srmobilezone')));
-      allow delete: if isSignedIn() && isValidId(settingId) && (isOwner(existing().ownerId) || isPlatformSuperAdmin());
+                       incoming().ownerId == existing().ownerId &&
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(settingId) && existing().ownerId == request.auth.uid;
     }
 
     // Supplier Validator
     function isValidSupplier(data) {
-      return data.ownerId is string && isOwner(data.ownerId) &&
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
              data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
              (!('companyName' in data) || (data.companyName is string && data.companyName.size() <= 120)) &&
              (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
@@ -204,19 +179,19 @@ service cloud.firestore {
     }
 
     match /suppliers/{supplierId} {
-      allow get: if isSignedIn() && (isOwner(existing().ownerId) || isPlatformSuperAdmin());
-      allow list: if isSignedIn() && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if isSignedIn() && isValidId(supplierId) && isValidSupplier(incoming()) &&
-                       isOwner(incoming().ownerId);
+                       incoming().ownerId == request.auth.uid;
       allow update: if isSignedIn() && isValidId(supplierId) && isValidSupplier(incoming()) &&
                        incoming().ownerId == existing().ownerId &&
-                       isOwner(existing().ownerId);
-      allow delete: if isSignedIn() && isValidId(supplierId) && isOwner(existing().ownerId);
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(supplierId) && existing().ownerId == request.auth.uid;
     }
 
     // Purchase Validator
     function isValidPurchase(data) {
-      return data.ownerId is string && isOwner(data.ownerId) &&
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
              data.challanNumber is string && data.challanNumber.size() > 0 && data.challanNumber.size() <= 50 &&
              data.total is number && data.total >= 0 &&
              data.paidAmount is number && data.paidAmount >= 0 &&
@@ -224,19 +199,19 @@ service cloud.firestore {
     }
 
     match /purchases/{purchaseId} {
-      allow get: if isSignedIn() && (isOwner(existing().ownerId) || isPlatformSuperAdmin());
-      allow list: if isSignedIn() && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if isSignedIn() && isValidId(purchaseId) && isValidPurchase(incoming()) &&
-                       isOwner(incoming().ownerId);
+                       incoming().ownerId == request.auth.uid;
       allow update: if isSignedIn() && isValidId(purchaseId) && isValidPurchase(incoming()) &&
                        incoming().ownerId == existing().ownerId &&
-                       isOwner(existing().ownerId);
-      allow delete: if isSignedIn() && isValidId(purchaseId) && isOwner(existing().ownerId);
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(purchaseId) && existing().ownerId == request.auth.uid;
     }
 
     // Repair Ticket Validator
     function isValidRepair(data) {
-      return data.ownerId is string && isOwner(data.ownerId) &&
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
              data.ticketNumber is string && data.ticketNumber.size() > 0 && data.ticketNumber.size() <= 50 &&
              data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 120 &&
              data.customerPhone is string && data.customerPhone.size() <= 30 &&
@@ -247,102 +222,97 @@ service cloud.firestore {
     }
 
     match /repairs/{repairId} {
-      allow get: if isSignedIn() && (isOwner(existing().ownerId) || isPlatformSuperAdmin());
-      allow list: if isSignedIn() && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if isSignedIn() && isValidId(repairId) && isValidRepair(incoming()) &&
-                       isOwner(incoming().ownerId);
+                       incoming().ownerId == request.auth.uid;
       allow update: if isSignedIn() && isValidId(repairId) && isValidRepair(incoming()) &&
                        incoming().ownerId == existing().ownerId &&
-                       isOwner(existing().ownerId);
-      allow delete: if isSignedIn() && isValidId(repairId) && isOwner(existing().ownerId);
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(repairId) && existing().ownerId == request.auth.uid;
     }
 
     // Expense Validator
     function isValidExpense(data) {
-      return data.ownerId is string && isOwner(data.ownerId) &&
+      return data.ownerId is string && data.ownerId == request.auth.uid &&
              data.title is string && data.title.size() > 0 && data.title.size() <= 150 &&
              data.amount is number && data.amount >= 0 &&
              (!('category' in data) || (data.category is string && data.category.size() <= 50));
     }
 
     match /expenses/{expenseId} {
-      allow get: if isSignedIn() && (isOwner(existing().ownerId) || isPlatformSuperAdmin());
-      allow list: if isSignedIn() && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if isSignedIn() && isValidId(expenseId) && isValidExpense(incoming()) &&
-                       isOwner(incoming().ownerId);
+                       incoming().ownerId == request.auth.uid;
       allow update: if isSignedIn() && isValidId(expenseId) && isValidExpense(incoming()) &&
                        incoming().ownerId == existing().ownerId &&
-                       isOwner(existing().ownerId);
-      allow delete: if isSignedIn() && isValidId(expenseId) && isOwner(existing().ownerId);
+                       existing().ownerId == request.auth.uid;
+      allow delete: if isSignedIn() && isValidId(expenseId) && existing().ownerId == request.auth.uid;
     }
 
     // Devices & MDM Locker
     match /devices/{deviceId} {
-      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
-      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
-      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
     }
 
     // Used Phones & Deeds
     match /used_buys/{usedBuyId} {
-      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
-      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
-      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
     }
 
     // Staff & Payroll
     match /staff/{staffId} {
-      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
-      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
-      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
     }
 
     // Customer Credit & KYC Profiles
     match /customer_profiles/{profileId} {
-      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
-      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
-      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
     }
 
     // Accounts & Accounting
     match /accounts/{accountId} {
-      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
-      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
-      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
     }
 
     // Journal Transactions
     match /journal/{journalId} {
-      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
-      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
-      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
     }
 
     // SMS Logs
     match /sms_logs/{smsId} {
-      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
-      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
-      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
     }
 
     // Chat Messages
     match /chat_messages/{chatId} {
-      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
-      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
-      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
-    }
-
-    // Platform SaaS Tenancy Registry & Super Admin Sync
-    match /platform_tenants/{tenantId} {
-      allow read, write: if isSignedIn();
-    }
-
-    match /platform_broadcasts/{broadcastId} {
-      allow read, write: if isSignedIn();
-    }
-
-    match /platform_audit_logs/{logId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn() && (
+        (request.method == 'create' && incoming().ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
     }
   }
 }

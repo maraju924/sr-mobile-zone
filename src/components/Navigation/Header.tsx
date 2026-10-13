@@ -20,8 +20,7 @@ import {
   Sparkles,
   LogOut,
   Barcode,
-  Tags,
-  Eye
+  Tags
 } from 'lucide-react';
 import { Branch } from '../../types';
 import { UniversalScannerModal } from '../Common/UniversalScannerModal';
@@ -43,11 +42,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
     chatMessages,
     devices,
     currentUser,
-    authLogout,
-    isSuperAdmin,
-    impersonatingTenant,
-    exitImpersonation,
-    settings
+    authLogout
   } = useApp();
 
   const [showBranchMenu, setShowBranchMenu] = useState(false);
@@ -82,7 +77,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
       case 'chat': return lang === 'bn' ? 'কাস্টমার সাপোর্ট চ্যাট' : 'Support Live Chat';
       case 'staff': return lang === 'bn' ? 'স্টাফ ও বেতন ব্যবস্থাপনা' : 'Staff & Payroll';
       case 'settings': return lang === 'bn' ? 'সিস্টেম ও শপ সেটিংস' : 'Settings & Preferences';
-      case 'super_admin': return lang === 'bn' ? 'সুপার এডমিন কন্ট্রোল হেডকোয়ার্টার' : 'Super Admin HQ';
       default: return 'ElectroPOS Enterprise';
     }
   };
@@ -106,32 +100,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
               <span>PhoneSell <span className="text-indigo-400 font-mono text-xs px-1.5 py-0.5 bg-indigo-950/80 rounded border border-indigo-500/30">PRO</span></span>
             </span>
           </div>
-
-          {impersonatingTenant ? (
-            <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold">
-              <Eye className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" />
-              <span className="truncate max-w-[120px] sm:max-w-[200px]">{impersonatingTenant.name}</span>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  exitImpersonation();
-                  setActiveTab('super_admin');
-                }}
-                className="ml-1 text-[10px] px-1 py-0.5 rounded bg-amber-600/80 hover:bg-amber-500 text-white font-bold transition cursor-pointer"
-                title={lang === 'bn' ? 'প্রিভিউ বন্ধ করে সুপার এডমিনে ফিরুন' : 'Exit preview'}
-              >
-                ✕
-              </button>
-            </div>
-          ) : (
-            <>
-              <span className="text-slate-600 hidden sm:inline">|</span>
-              <span className="text-xs sm:text-sm font-medium text-slate-300 hidden md:inline truncate max-w-xs">
-                {settings?.storeName ? `${settings.storeName} - ${getPageTitle()}` : getPageTitle()}
-              </span>
-            </>
-          )}
+          <span className="text-slate-600 hidden sm:inline">|</span>
+          <span className="text-xs sm:text-sm font-medium text-slate-300 hidden md:inline truncate max-w-xs">
+            {getPageTitle()}
+          </span>
         </div>
       </div>
 
@@ -359,9 +331,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 {currentUser?.name || 'Tenant Admin'}
               </div>
               <div className="text-[10px] text-indigo-400 font-mono">
-                {currentUser?.staffRole === 'Admin' 
-                  ? 'Admin (মালিক সমকক্ষ)' 
-                  : (currentUser?.role === 'SUPER_ADMIN' ? 'Owner / Admin' : currentUser?.staffRole || currentUser?.role || 'Staff')}
+                {currentUser?.role === 'SUPER_ADMIN' ? 'Owner / Admin' : currentUser?.role || 'Staff'}
               </div>
             </div>
           </div>
@@ -383,26 +353,13 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                       আইসোলেটেড
                     </span>
                     <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      {currentUser?.staffRole === 'Admin' ? 'ADMIN (FULL OWNER)' : (currentUser?.role || 'SUPER_ADMIN')}
+                      {currentUser?.role || 'SUPER_ADMIN'}
                     </span>
                   </div>
                 </div>
               </div>
 
               <div className="space-y-1 text-xs">
-                {isSuperAdmin && (
-                  <button
-                    onClick={() => {
-                      setActiveTab('super_admin');
-                      setShowProfileMenu(false);
-                    }}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white transition flex items-center gap-2 font-bold border border-indigo-500/30"
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>{lang === 'bn' ? 'সুপার এডমিন কন্ট্রোল রুম' : 'Super Admin HQ'}</span>
-                  </button>
-                )}
-
                 <button
                   onClick={() => {
                     setActiveTab('settings');

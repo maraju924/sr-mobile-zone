@@ -27,8 +27,7 @@ import {
   Send,
   Tags,
   X,
-  LogOut,
-  Eye
+  LogOut
 } from 'lucide-react';
 import { ActiveTab } from '../../types';
 
@@ -66,10 +65,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
     chatMessages,
     installments,
     currentUser,
-    authLogout,
-    isSuperAdmin,
-    impersonatingTenant,
-    exitImpersonation
+    authLogout
   } = useApp();
 
   const [collapsedGroups, setCollapsedGroups] = useState<{ [key: string]: boolean }>({});
@@ -178,14 +174,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
       titleBn: 'সেটিংস ও স্টাফ',
       icon: Settings,
       items: [
-        ...(isSuperAdmin ? [{
-          id: 'super_admin',
-          tab: 'super_admin' as ActiveTab,
-          label: 'Super Admin HQ',
-          labelBn: 'সুপার এডমিন কন্ট্রোল',
-          icon: ShieldCheck,
-          badge: 'HQ'
-        }] : []),
         { id: 'staff', tab: 'staff', label: 'Staff & Roles', labelBn: 'স্টাফ ও পারমিশন', icon: UserCheck },
         { id: 'settings', tab: 'settings', label: 'System Settings', labelBn: 'শপ সেটিংস', icon: Settings }
       ]
@@ -368,29 +356,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
         {/* Sidebar Footer Info */}
         <div className="p-3 border-t border-slate-800 text-[11px] bg-slate-950/60 space-y-2">
-          {impersonatingTenant && (
-            <div className="p-2 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[11px] space-y-1">
-              <div className="flex items-center justify-between font-bold">
-                <span className="flex items-center gap-1">
-                  <Eye className="w-3 h-3 text-amber-400" />
-                  <span>{lang === 'bn' ? 'স্টোর পরিদর্শন' : 'Inspecting Store'}</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    exitImpersonation();
-                    setActiveTab('super_admin');
-                  }}
-                  className="px-1.5 py-0.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-bold text-[10px] cursor-pointer"
-                >
-                  {lang === 'bn' ? 'এক্সিট' : 'Exit'}
-                </button>
-              </div>
-              <div className="font-extrabold text-white truncate">{impersonatingTenant.name}</div>
-              <div className="text-[10px] text-amber-200/80 font-mono truncate">{impersonatingTenant.email}</div>
-            </div>
-          )}
-
           {currentUser && (
             <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
               <div className="overflow-hidden pr-2">

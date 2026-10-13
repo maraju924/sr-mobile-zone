@@ -216,10 +216,10 @@ export const PosTerminal: React.FC = () => {
 
       if (!query) return matchCat && matchBrand;
 
-      const matchName = (p.name || '').toLowerCase().includes(query);
+      const matchName = p.name.toLowerCase().includes(query);
       const matchBrandQuery = (p.brand || '').toLowerCase().includes(query);
       const matchBarcode = (p.barcode || '').toLowerCase().includes(query);
-      const matchSerial = (p.serialNumbers || []).some(s => s && s.toLowerCase().includes(query));
+      const matchSerial = (p.serialNumbers || []).some(s => s.toLowerCase().includes(query));
 
       return matchCat && matchBrand && (matchName || matchBrandQuery || matchBarcode || matchSerial);
     });

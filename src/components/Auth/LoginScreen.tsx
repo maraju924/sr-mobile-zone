@@ -16,7 +16,6 @@ import {
 import { AuthUser } from '../../types';
 import { loginWithGoogle, loginWithEmail, registerWithEmail } from '../../services/firebase';
 import { useApp } from '../../context/AppContext';
-import { isPlatformSuperAdmin } from '../../config/platformAdmin';
 
 interface LoginScreenProps {
   onLoginSuccess: (user: AuthUser) => void;
@@ -85,21 +84,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const handleQuickLogin = (customEmail?: string, customName?: string) => {
     setIsLoading(true);
     const useEmail = customEmail?.trim().toLowerCase() || 'owner@phonesellpro.com';
-    const isSR = useEmail === 'srmobilezone000@gmail.com' || useEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || useEmail.includes('srmobilezone');
-    const useName = isSR ? 'SR Mobile Zone' : (customName?.trim() || (lang === 'bn' ? 'শপ ওনার' : 'Shop Owner'));
-    const resolvedId = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : `admin_${useEmail.replace(/[^a-z0-9]/g, '_')}`;
+    const useName = customName?.trim() || (lang === 'bn' ? 'শপ ওনার' : 'Shop Owner');
 
-    const isSuper = isPlatformSuperAdmin(useEmail);
     const authU: AuthUser = {
-      id: resolvedId,
+      id: `admin_${useEmail.replace(/[^a-z0-9]/g, '_')}`,
       name: useName,
-      username: isSR ? 'srmobilezone' : useEmail.split('@')[0],
-      email: isSR ? 'srmobilezone000@gmail.com' : useEmail,
+      username: useEmail.split('@')[0],
+      email: useEmail,
       role: 'SUPER_ADMIN',
       branch: 'ALL',
       phone: '+8801700000000',
       securityPin: '',
-      isPlatformAdmin: isSuper,
       lastLogin: new Date().toISOString()
     };
 
@@ -127,23 +122,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         return;
       }
       if (fbUser.email) {
-        const cleanEmail = fbUser.email.toLowerCase().trim();
-        const isSR = cleanEmail === 'srmobilezone000@gmail.com' || cleanEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || cleanEmail.includes('srmobilezone');
-        const resolvedId = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : fbUser.uid;
-        const resolvedName = isSR ? 'SR Mobile Zone' : (fbUser.displayName || fbUser.email.split('@')[0]);
-
-        const isSuper = isPlatformSuperAdmin(fbUser.email);
         const authU: AuthUser = {
-          id: resolvedId,
-          name: resolvedName,
-          username: isSR ? 'srmobilezone' : fbUser.email.split('@')[0],
-          email: isSR ? 'srmobilezone000@gmail.com' : fbUser.email,
+          id: fbUser.uid,
+          name: fbUser.displayName || fbUser.email.split('@')[0],
+          username: fbUser.email.split('@')[0],
+          email: fbUser.email,
           role: 'SUPER_ADMIN',
           branch: 'ALL',
           phone: fbUser.phoneNumber || '',
           securityPin: '',
           avatar: fbUser.photoURL || undefined,
-          isPlatformAdmin: isSuper,
           lastLogin: new Date().toISOString()
         };
         onLoginSuccess(authU);
@@ -200,21 +188,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       try {
         const fbUser = await registerWithEmail(cleanEmail, password, fullName.trim() || undefined);
         if (fbUser && fbUser.email) {
-          const isSR = cleanEmail === 'srmobilezone000@gmail.com' || cleanEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || cleanEmail.includes('srmobilezone');
-          const resolvedId = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : fbUser.uid;
-          const resolvedName = isSR ? 'SR Mobile Zone' : (fullName.trim() || fbUser.displayName || cleanEmail.split('@')[0]);
-
-          const isSuper = isPlatformSuperAdmin(fbUser.email);
           const authU: AuthUser = {
-            id: resolvedId,
-            name: resolvedName,
-            username: isSR ? 'srmobilezone' : cleanEmail.split('@')[0],
-            email: isSR ? 'srmobilezone000@gmail.com' : fbUser.email,
+            id: fbUser.uid,
+            name: fullName.trim() || fbUser.displayName || cleanEmail.split('@')[0],
+            username: cleanEmail.split('@')[0],
+            email: fbUser.email,
             role: 'SUPER_ADMIN',
             branch: 'ALL',
             phone: '',
             securityPin: '',
-            isPlatformAdmin: isSuper,
             lastLogin: new Date().toISOString()
           };
           onLoginSuccess(authU);
@@ -232,22 +214,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       try {
         const fbUser = await loginWithEmail(cleanEmail, password);
         if (fbUser && fbUser.email) {
-          const isSR = cleanEmail === 'srmobilezone000@gmail.com' || cleanEmail === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || cleanEmail.includes('srmobilezone');
-          const resolvedId = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : fbUser.uid;
-          const resolvedName = isSR ? 'SR Mobile Zone' : (fbUser.displayName || cleanEmail.split('@')[0]);
-
-          const isSuper = isPlatformSuperAdmin(fbUser.email);
           const authU: AuthUser = {
-            id: resolvedId,
-            name: resolvedName,
-            username: isSR ? 'srmobilezone' : cleanEmail.split('@')[0],
-            email: isSR ? 'srmobilezone000@gmail.com' : fbUser.email,
+            id: fbUser.uid,
+            name: fbUser.displayName || cleanEmail.split('@')[0],
+            username: cleanEmail.split('@')[0],
+            email: fbUser.email,
             role: 'SUPER_ADMIN',
             branch: 'ALL',
             phone: fbUser.phoneNumber || '',
             securityPin: '',
             avatar: fbUser.photoURL || undefined,
-            isPlatformAdmin: isSuper,
             lastLogin: new Date().toISOString()
           };
           onLoginSuccess(authU);
@@ -490,15 +466,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
               {/* Quick staff picker helper */}
               {staff && staff.length > 0 && (
-                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-700 block">
-                      {lang === 'bn' ? 'ক্লিক করে সরাসরি টেস্ট করুন (Quick Test Accounts):' : 'Click to Auto-fill Staff Credentials:'}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono">PIN: 1234</span>
-                  </div>
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] space-y-1.5">
+                  <span className="font-bold text-slate-700 block">
+                    {lang === 'bn' ? 'সরাসরি টেস্ট করার জন্য কর্মী নির্বাচন করুন:' : 'Quick Select Staff Account:'}
+                  </span>
                   <div className="flex flex-wrap gap-1.5">
-                    {staff.map(s => (
+                    {staff.slice(0, 3).map(s => (
                       <button
                         key={s.id}
                         type="button"
@@ -506,13 +479,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                           setStaffInput(s.phone);
                           setStaffPin(s.pin || '1234');
                         }}
-                        className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer text-[10px] border flex items-center gap-1 ${
-                          s.role === 'Admin'
-                            ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 font-bold shadow-xs'
-                            : 'bg-white hover:bg-indigo-50 border-slate-200 hover:border-indigo-300 text-slate-800'
-                        }`}
+                        className="px-2 py-1 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-lg text-slate-800 font-medium transition cursor-pointer text-[10px]"
                       >
-                        {s.role === 'Admin' ? '🛡️ ' : ''}{s.name} ({s.role === 'Admin' ? 'Admin - মালিক সমকক্ষ' : s.role})
+                        {s.name} ({s.role})
                       </button>
                     ))}
                   </div>
