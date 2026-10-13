@@ -25,6 +25,7 @@ service cloud.firestore {
 
     function isOwner(ownerId) {
       return isSignedIn() && (
+        isPlatformSuperAdmin() ||
         request.auth.uid == ownerId ||
         (request.auth.token.email != null && (
           request.auth.token.email.lower() == 'srmobilezone000@gmail.com' ||
@@ -277,66 +278,58 @@ service cloud.firestore {
 
     // Devices & MDM Locker
     match /devices/{deviceId} {
-      allow read, write: if isSignedIn() && (
-        (request.method == 'create' && isOwner(incoming().ownerId)) ||
-        (resource != null && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin()))
-      );
+      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
+      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
     }
 
     // Used Phones & Deeds
     match /used_buys/{usedBuyId} {
-      allow read, write: if isSignedIn() && (
-        (request.method == 'create' && isOwner(incoming().ownerId)) ||
-        (resource != null && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin()))
-      );
+      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
+      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
     }
 
     // Staff & Payroll
     match /staff/{staffId} {
-      allow read, write: if isSignedIn() && (
-        (request.method == 'create' && isOwner(incoming().ownerId)) ||
-        (resource != null && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin()))
-      );
+      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
+      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
     }
 
     // Customer Credit & KYC Profiles
     match /customer_profiles/{profileId} {
-      allow read, write: if isSignedIn() && (
-        (request.method == 'create' && isOwner(incoming().ownerId)) ||
-        (resource != null && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin()))
-      );
+      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
+      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
     }
 
     // Accounts & Accounting
     match /accounts/{accountId} {
-      allow read, write: if isSignedIn() && (
-        (request.method == 'create' && isOwner(incoming().ownerId)) ||
-        (resource != null && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin()))
-      );
+      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
+      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
     }
 
     // Journal Transactions
     match /journal/{journalId} {
-      allow read, write: if isSignedIn() && (
-        (request.method == 'create' && isOwner(incoming().ownerId)) ||
-        (resource != null && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin()))
-      );
+      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
+      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
     }
 
     // SMS Logs
     match /sms_logs/{smsId} {
-      allow read, write: if isSignedIn() && (
-        (request.method == 'create' && isOwner(incoming().ownerId)) ||
-        (resource != null && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin()))
-      );
+      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
+      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
     }
 
     // Chat Messages
     match /chat_messages/{chatId} {
-      allow read, write: if isSignedIn() && (
-        (request.method == 'create' && isOwner(incoming().ownerId)) ||
-        (resource != null && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin()))
-      );
+      allow read: if isSignedIn() && (resource == null || isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
+      allow create: if isSignedIn() && (isOwner(incoming().ownerId) || isPlatformSuperAdmin());
+      allow update, delete: if isSignedIn() && (resource == null || isOwner(existing().ownerId) || isPlatformSuperAdmin());
     }
 
     // Platform SaaS Tenancy Registry & Super Admin Sync

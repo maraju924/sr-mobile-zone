@@ -2859,7 +2859,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (ownerId) saveUserToLocal('staff', ownerId, next);
       return next;
     });
-    if (ownerId) deleteDocFromFirestore('staff', id);
+    if (ownerId) {
+      deleteDocFromFirestore('staff', id).catch(err => {
+        console.warn('Cloud staff deletion notice:', err);
+      });
+    }
   };
 
   const toggleStaffStatus = (id: string) => {
