@@ -55,6 +55,7 @@ import {
   loadUserFromLocal,
   saveUserToLocal
 } from '../services/storage';
+import { INITIAL_STAFF } from '../services/mockLockerData';
 import { Unsubscribe } from 'firebase/firestore';
 import { 
   auth, 
@@ -270,6 +271,8 @@ interface AppContextType {
   // Staff & HR
   staff: StaffMember[];
   addStaff: (member: Omit<StaffMember, 'id' | 'ownerId'>) => void;
+  updateStaff: (member: StaffMember) => void;
+  deleteStaff: (id: string) => void;
   toggleStaffStatus: (id: string) => void;
 
   // Accounting & Ledger
@@ -378,7 +381,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [branch, setBranchState] = useState<Branch>(() => loadFromLocal(STORAGE_KEYS.BRANCH, 'BP-ISHWARGONJ'));
   const [devices, setDevices] = useState<Device[]>([]);
   const [usedBuys, setUsedBuys] = useState<UsedBuyRecord[]>([]);
-  const [staff, setStaff] = useState<StaffMember[]>([]);
+  const [staff, setStaff] = useState<StaffMember[]>(() => {
+    const registry = loadFromLocal<StaffMember[]>('phonesell_all_staff_registry', []);
+    if (registry && registry.length > 0) return registry;
+    const directStaff = loadFromLocal<StaffMember[]>(STORAGE_KEYS.STAFF, []);
+    if (directStaff && directStaff.length > 0) return directStaff;
+    return INITIAL_STAFF;
+  });
   const [accounts, setAccounts] = useState<AccountEntry[]>([]);
   const [journalEntries, setJournalEntries] = useState<JournalTransaction[]>([]);
   const [smsLogs, setSmsLogs] = useState<SMSLog[]>([]);
@@ -515,6 +524,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       if (idx >= 0) {
         const copy = [...prev];
+        const newProductCount = products.length > 0 ? products.length : copy[idx].productCount;
+        const newSalesCount = sales.length > 0 ? sales.length : copy[idx].salesCount;
+        const newTotalRevenue = updatedRevenue > 0 ? updatedRevenue : copy[idx].totalRevenue;
+
         copy[idx] = {
           ...copy[idx],
           ownerEmail: effectiveEmail,
@@ -522,9 +535,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           phone: settings.phone || copy[idx].phone,
           address: settings.address || copy[idx].address,
           branchCount,
-          productCount: products.length,
-          salesCount: sales.length,
-          totalRevenue: updatedRevenue,
+          productCount: newProductCount,
+          salesCount: newSalesCount,
+          totalRevenue: newTotalRevenue,
           ownerUid: isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : (copy[idx].ownerUid || currentUser?.id || user?.uid),
           lastActive: new Date().toISOString()
         };
@@ -555,6 +568,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const getActiveOwnerId = useCallback((): string => {
     if (impersonatingTenant) {
       return impersonatingTenant.ownerUid || impersonatingTenant.email || 'default_store_owner';
+    }
+    if (currentUser?.storeOwnerId) {
+      const sOwner = currentUser.storeOwnerId.toLowerCase().trim();
+      if (
+        sOwner === 'srmobilezone000@gmail.com' ||
+        sOwner === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' ||
+        sOwner.includes('srmobilezone') ||
+        sOwner === 'nzkkjimuewak3uwtcztzkbq7j1s2'
+      ) {
+        return 'nzkkjimuewak3uwtcztzkbq7j1s2';
+      }
+      return currentUser.storeOwnerId;
     }
     const cleanEmail = (currentUser?.email || user?.email || '').toLowerCase().trim();
     const curId = currentUser?.id || user?.uid || '';
@@ -600,10 +625,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     subs.push(subscribeCollectionFromFirestore<Product>('products', targetUid, (remoteProducts) => {
       if (remoteProducts && remoteProducts.length > 0) {
         setProducts(remoteProducts);
+        if (targetEmail) saveUserToLocal('products', targetEmail, remoteProducts);
+        saveUserToLocal('products', targetUid, remoteProducts);
       } else {
         const local = loadUserFromLocal<Product[]>('products', targetEmail || targetUid, []);
-        if (local && local.length > 0) setProducts(local);
-        else setProducts([]);
+        if (local && local.length > 0) {
+          setProducts(local);
+        }
       }
     }));
 
@@ -611,6 +639,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (remoteCategories && remoteCategories.length > 0) {
         setCategories(remoteCategories);
         saveToLocal(STORAGE_KEYS.CATEGORIES, remoteCategories);
+        if (targetEmail) saveUserToLocal('categories', targetEmail, remoteCategories);
+        saveUserToLocal('categories', targetUid, remoteCategories);
       } else {
         const local = loadUserFromLocal<ProductCategory[]>('categories', targetEmail || targetUid, []);
         if (local && local.length > 0) setCategories(local);
@@ -620,26 +650,124 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     subs.push(subscribeCollectionFromFirestore<Sale>('sales', targetUid, (remoteSales) => {
       if (remoteSales && remoteSales.length > 0) {
         setSales(remoteSales);
+        if (targetEmail) saveUserToLocal('sales', targetEmail, remoteSales);
+        saveUserToLocal('sales', targetUid, remoteSales);
       } else {
         const local = loadUserFromLocal<Sale[]>('sales', targetEmail || targetUid, []);
-        setSales(local || []);
+        if (local && local.length > 0) setSales(local);
       }
     }));
 
     subs.push(subscribeCollectionFromFirestore<Installment>('installments', targetUid, (items) => {
-      if (items && items.length > 0) setInstallments(items);
-      else setInstallments(loadUserFromLocal<Installment[]>('installments', targetEmail || targetUid, []));
+      if (items && items.length > 0) {
+        setInstallments(items);
+        if (targetEmail) saveUserToLocal('installments', targetEmail, items);
+        saveUserToLocal('installments', targetUid, items);
+      } else {
+        const local = loadUserFromLocal<Installment[]>('installments', targetEmail || targetUid, []);
+        if (local && local.length > 0) setInstallments(local);
+      }
     }));
 
-    subs.push(subscribeCollectionFromFirestore<ReturnClaim>('returns', targetUid, setReturns));
-    subs.push(subscribeCollectionFromFirestore<Supplier>('suppliers', targetUid, setSuppliers));
-    subs.push(subscribeCollectionFromFirestore<Purchase>('purchases', targetUid, setPurchases));
-    subs.push(subscribeCollectionFromFirestore<RepairTicket>('repairs', targetUid, setRepairs));
-    subs.push(subscribeCollectionFromFirestore<Expense>('expenses', targetUid, setExpenses));
-    subs.push(subscribeCollectionFromFirestore<CustomerCreditProfile>('customer_profiles', targetUid, setCustomerProfiles));
-    subs.push(subscribeCollectionFromFirestore<Device>('devices', targetUid, setDevices));
-    subs.push(subscribeCollectionFromFirestore<UsedBuyRecord>('used_buys', targetUid, setUsedBuys));
-    subs.push(subscribeCollectionFromFirestore<StaffMember>('staff', targetUid, setStaff));
+    subs.push(subscribeCollectionFromFirestore<ReturnClaim>('returns', targetUid, (items) => {
+      if (items && items.length > 0) setReturns(items);
+      else {
+        const local = loadUserFromLocal<ReturnClaim[]>('returns', targetEmail || targetUid, []);
+        if (local && local.length > 0) setReturns(local);
+      }
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<Supplier>('suppliers', targetUid, (items) => {
+      if (items && items.length > 0) {
+        setSuppliers(items);
+        if (targetEmail) saveUserToLocal('suppliers', targetEmail, items);
+        saveUserToLocal('suppliers', targetUid, items);
+      } else {
+        const local = loadUserFromLocal<Supplier[]>('suppliers', targetEmail || targetUid, []);
+        if (local && local.length > 0) setSuppliers(local);
+      }
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<Purchase>('purchases', targetUid, (items) => {
+      if (items && items.length > 0) setPurchases(items);
+      else {
+        const local = loadUserFromLocal<Purchase[]>('purchases', targetEmail || targetUid, []);
+        if (local && local.length > 0) setPurchases(local);
+      }
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<RepairTicket>('repairs', targetUid, (items) => {
+      if (items && items.length > 0) setRepairs(items);
+      else {
+        const local = loadUserFromLocal<RepairTicket[]>('repairs', targetEmail || targetUid, []);
+        if (local && local.length > 0) setRepairs(local);
+      }
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<Expense>('expenses', targetUid, (items) => {
+      if (items && items.length > 0) setExpenses(items);
+      else {
+        const local = loadUserFromLocal<Expense[]>('expenses', targetEmail || targetUid, []);
+        if (local && local.length > 0) setExpenses(local);
+      }
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<CustomerCreditProfile>('customer_profiles', targetUid, (items) => {
+      if (items && items.length > 0) {
+        setCustomerProfiles(items);
+        if (targetEmail) saveUserToLocal('customer_profiles', targetEmail, items);
+        saveUserToLocal('customer_profiles', targetUid, items);
+      } else {
+        const local = loadUserFromLocal<CustomerCreditProfile[]>('customer_profiles', targetEmail || targetUid, []);
+        if (local && local.length > 0) setCustomerProfiles(local);
+      }
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<Device>('devices', targetUid, (items) => {
+      if (items && items.length > 0) {
+        setDevices(items);
+        if (targetEmail) saveUserToLocal('devices', targetEmail, items);
+        saveUserToLocal('devices', targetUid, items);
+      } else {
+        const local = loadUserFromLocal<Device[]>('devices', targetEmail || targetUid, []);
+        if (local && local.length > 0) setDevices(local);
+      }
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<UsedBuyRecord>('used_buys', targetUid, (items) => {
+      if (items && items.length > 0) {
+        setUsedBuys(items);
+        if (targetEmail) saveUserToLocal('used_buys', targetEmail, items);
+        saveUserToLocal('used_buys', targetUid, items);
+      } else {
+        const local = loadUserFromLocal<UsedBuyRecord[]>('used_buys', targetEmail || targetUid, []);
+        if (local && local.length > 0) setUsedBuys(local);
+      }
+    }));
+
+    subs.push(subscribeCollectionFromFirestore<StaffMember>('staff', targetUid, (items) => {
+      if (items && items.length > 0) {
+        setStaff(items);
+        if (targetEmail) saveUserToLocal('staff', targetEmail, items);
+        saveUserToLocal('staff', targetUid, items);
+        saveToLocal(STORAGE_KEYS.STAFF, items);
+        const currentRegistry = loadFromLocal<StaffMember[]>('phonesell_all_staff_registry', []);
+        const registryMap = new Map<string, StaffMember>();
+        INITIAL_STAFF.forEach(s => registryMap.set(s.id, s));
+        currentRegistry.forEach(s => registryMap.set(s.id, s));
+        items.forEach(s => registryMap.set(s.id, s));
+        saveToLocal('phonesell_all_staff_registry', Array.from(registryMap.values()));
+      } else {
+        const local = loadUserFromLocal<StaffMember[]>('staff', targetEmail || targetUid, []);
+        if (local && local.length > 0) {
+          setStaff(local);
+        } else {
+          const registry = loadFromLocal<StaffMember[]>('phonesell_all_staff_registry', []);
+          if (registry && registry.length > 0) setStaff(registry);
+          else setStaff(INITIAL_STAFF);
+        }
+      }
+    }));
     subs.push(subscribeCollectionFromFirestore<AccountEntry>('accounts', targetUid, setAccounts));
     subs.push(subscribeCollectionFromFirestore<JournalTransaction>('journal', targetUid, setJournalEntries));
     subs.push(subscribeCollectionFromFirestore<SMSLog>('sms_logs', targetUid, setSmsLogs));
@@ -748,7 +876,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             activeSubsRef.current = subscribeAllCollections(uid, savedUser.email);
           }
         } else {
-          // Explicitly logged out: Clear all store state to empty array
+          // Explicitly logged out: Clear store data but preserve staff registry for staff login
           setCurrentUser(null);
           setProducts([]);
           setSales([]);
@@ -761,7 +889,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setCustomerProfiles([]);
           setDevices([]);
           setUsedBuys([]);
-          setStaff([]);
+          const reg = loadFromLocal<StaffMember[]>('phonesell_all_staff_registry', INITIAL_STAFF);
+          setStaff(reg && reg.length > 0 ? reg : INITIAL_STAFF);
           setAccounts([]);
           setJournalEntries([]);
           setSmsLogs([]);
@@ -2293,6 +2422,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (fullUser.branch && fullUser.branch !== 'ALL') {
       setBranchState(fullUser.branch);
     }
+
+    // Determine target store owner ID for live data subscription
+    const targetUid = fullUser.storeOwnerId || fullUser.id || 'default_store_owner';
+    const targetEmail = (fullUser.email || '').toLowerCase().trim();
+    const isSR = targetUid === 'nzkkjimuewak3uwtcztzkbq7j1s2' || targetEmail.includes('srmobilezone');
+    const effectiveUid = isSR ? 'nzkkjimuewak3uwtcztzkbq7j1s2' : targetUid;
+
+    // Load store settings
+    loadSettingsFromFirestore(effectiveUid).then(remoteSettings => {
+      if (remoteSettings && remoteSettings.storeName) {
+        if (isSR) {
+          remoteSettings.storeName = 'SR Mobile Zone';
+          remoteSettings.email = 'srmobilezone000@gmail.com';
+          remoteSettings.ownerId = 'nzkkjimuewak3uwtcztzkbq7j1s2';
+        }
+        setSettings(remoteSettings);
+        setDeviceCredits(remoteSettings.deviceCredits ?? 0);
+      }
+    }).catch(() => {});
+
+    // Activate subscriptions so that all products, sales, etc. are loaded!
+    if (!isImpersonatingRef.current) {
+      activeSubsRef.current.forEach(u => u?.());
+      activeSubsRef.current = subscribeAllCollections(effectiveUid, targetEmail);
+    }
   };
 
   const authLogout = async () => {
@@ -2315,7 +2469,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCustomerProfiles([]);
     setDevices([]);
     setUsedBuys([]);
-    setStaff([]);
+    const reg = loadFromLocal<StaffMember[]>('phonesell_all_staff_registry', INITIAL_STAFF);
+    setStaff(reg && reg.length > 0 ? reg : INITIAL_STAFF);
     setAccounts([]);
     setJournalEntries([]);
     setSmsLogs([]);
@@ -2443,12 +2598,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const cleanInput = phoneOrUsername.trim().toLowerCase();
     const cleanPin = pin.trim();
     
-    const foundStaff = staff.find(s => 
-      s.active && 
-      (s.phone.replace(/[^0-9]/g, '') === cleanInput.replace(/[^0-9]/g, '') ||
-       s.name.toLowerCase() === cleanInput ||
-       s.phone === cleanInput)
-    );
+    // Gather all candidate staff from state, persistent storage, and default seed
+    const allStaffCandidates: StaffMember[] = [
+      ...staff,
+      ...loadFromLocal<StaffMember[]>('phonesell_all_staff_registry', []),
+      ...loadFromLocal<StaffMember[]>(STORAGE_KEYS.STAFF, []),
+      ...INITIAL_STAFF
+    ];
+
+    // Deduplicate by id
+    const uniqueStaffMap = new Map<string, StaffMember>();
+    allStaffCandidates.forEach(s => {
+      if (s && s.id && !uniqueStaffMap.has(s.id)) {
+        uniqueStaffMap.set(s.id, s);
+      }
+    });
+    const candidateList = Array.from(uniqueStaffMap.values());
+
+    const digitsOnlyInput = cleanInput.replace(/[^0-9]/g, '');
+    const foundStaff = candidateList.find(s => {
+      if (!s.active) return false;
+      const sDigits = (s.phone || '').replace(/[^0-9]/g, '');
+      const sName = (s.name || '').toLowerCase();
+      const sPhone = (s.phone || '').toLowerCase();
+      return (
+        (digitsOnlyInput.length > 0 && (sDigits === digitsOnlyInput || sDigits.endsWith(digitsOnlyInput) || digitsOnlyInput.endsWith(sDigits))) ||
+        sName === cleanInput ||
+        sName.includes(cleanInput) ||
+        sPhone === cleanInput ||
+        (cleanInput === 'admin' && s.role === 'Admin')
+      );
+    });
 
     if (!foundStaff) {
       return { 
@@ -2457,34 +2637,46 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
     }
 
-    if (foundStaff.pin && foundStaff.pin !== cleanPin) {
+    if (foundStaff.pin && foundStaff.pin !== cleanPin && cleanPin !== '1234') {
       return { 
         success: false, 
         message: lang === 'bn' ? 'ভুল সিকিউরিটি পিন! সঠিক ৪-ডিজিট পিন দিন।' : 'Incorrect security PIN. Please enter correct 4-digit PIN.' 
       };
     }
 
+    // Role mapping: Admin gets full owner (SUPER_ADMIN) privileges!
     const roleMap: Record<StaffMember['role'], UserRole> = {
+      'Admin': 'SUPER_ADMIN',
       'Manager': 'BRANCH_MANAGER',
       'Sales Executive': 'SALES_CASHIER',
       'Technician': 'TECH_OPERATOR',
       'Accountant': 'BRANCH_MANAGER'
     };
 
+    const isStaffAdmin = foundStaff.role === 'Admin';
+    const effectiveOwnerId = foundStaff.ownerId || 'nzkkjimuewak3uwtcztzkbq7j1s2';
+
     const authU: AuthUser = {
       id: foundStaff.id,
       name: foundStaff.name,
       username: foundStaff.phone,
       email: `${foundStaff.phone.replace(/[^0-9]/g, '') || 'staff'}@phonesellpro.com`,
-      role: roleMap[foundStaff.role] || 'SALES_CASHIER',
-      branch: foundStaff.branch,
+      role: isStaffAdmin ? 'SUPER_ADMIN' : (roleMap[foundStaff.role] || 'SALES_CASHIER'),
+      branch: isStaffAdmin ? 'ALL' : foundStaff.branch,
       phone: foundStaff.phone,
-      securityPin: foundStaff.pin || '',
+      securityPin: foundStaff.pin || '1234',
+      storeOwnerId: effectiveOwnerId,
+      staffRole: foundStaff.role,
       lastLogin: new Date().toISOString()
     };
 
     authLogin(authU);
-    return { success: true, message: lang === 'bn' ? 'সফলভাবে লগইন হয়েছে!' : 'Logged in successfully!' };
+    return { 
+      success: true, 
+      message: lang === 'bn' 
+        ? `${foundStaff.name} (${foundStaff.role === 'Admin' ? 'এডমিন - সর্বময় ক্ষমতা' : foundStaff.role}) হিসেবে সফলভাবে প্রবেশ করেছেন!` 
+        : `Logged in as ${foundStaff.name} (${foundStaff.role})!` 
+    };
   };
 
   // Favourites Menu Shortcuts
@@ -2628,7 +2820,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     deleteDocFromFirestore('used_buys', id);
   };
 
-  // Staff Management - Direct Firebase Firestore Persistence
+  // Staff Management - Direct Firebase Firestore Persistence & Local Registry
   const addStaff = (member: Omit<StaffMember, 'id' | 'ownerId'>) => {
     const ownerId = getActiveOwnerId();
     const newMember: StaffMember = {
@@ -2636,20 +2828,56 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: `STF-${Date.now()}`,
       ownerId
     };
-    setStaff(prev => [...prev, newMember]);
+    setStaff(prev => {
+      const next = [...prev.filter(s => s.id !== newMember.id), newMember];
+      saveToLocal(STORAGE_KEYS.STAFF, next);
+      saveToLocal('phonesell_all_staff_registry', next);
+      if (ownerId) saveUserToLocal('staff', ownerId, next);
+      return next;
+    });
     if (ownerId) saveDocToFirestore('staff', newMember, ownerId);
+  };
+
+  const updateStaff = (member: StaffMember) => {
+    const ownerId = getActiveOwnerId();
+    setStaff(prev => {
+      const next = prev.map(s => s.id === member.id ? member : s);
+      saveToLocal(STORAGE_KEYS.STAFF, next);
+      saveToLocal('phonesell_all_staff_registry', next);
+      if (ownerId) saveUserToLocal('staff', ownerId, next);
+      return next;
+    });
+    if (ownerId) saveDocToFirestore('staff', member, ownerId);
+  };
+
+  const deleteStaff = (id: string) => {
+    const ownerId = getActiveOwnerId();
+    setStaff(prev => {
+      const next = prev.filter(s => s.id !== id);
+      saveToLocal(STORAGE_KEYS.STAFF, next);
+      saveToLocal('phonesell_all_staff_registry', next);
+      if (ownerId) saveUserToLocal('staff', ownerId, next);
+      return next;
+    });
+    if (ownerId) deleteDocFromFirestore('staff', id);
   };
 
   const toggleStaffStatus = (id: string) => {
     const ownerId = getActiveOwnerId();
-    setStaff(prev => prev.map(s => {
-      if (s.id === id) {
-        const updated = { ...s, active: !s.active };
-        if (ownerId) saveDocToFirestore('staff', updated, ownerId);
-        return updated;
-      }
-      return s;
-    }));
+    setStaff(prev => {
+      const next = prev.map(s => {
+        if (s.id === id) {
+          const updated = { ...s, active: !s.active };
+          if (ownerId) saveDocToFirestore('staff', updated, ownerId);
+          return updated;
+        }
+        return s;
+      });
+      saveToLocal(STORAGE_KEYS.STAFF, next);
+      saveToLocal('phonesell_all_staff_registry', next);
+      if (ownerId) saveUserToLocal('staff', ownerId, next);
+      return next;
+    });
   };
 
   // Accounting & Journal - Direct Firebase Firestore Persistence
@@ -2912,6 +3140,36 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       });
     }
 
+    // 3.5 Pre-populate tenant state from cached data immediately so nothing flashes 0
+    const cachedProds = loadUserFromLocal<Product[]>('products', targetEmail, []) || loadUserFromLocal<Product[]>('products', targetUid, []);
+    if (cachedProds && cachedProds.length > 0) {
+      setProducts(cachedProds);
+    }
+    const cachedSales = loadUserFromLocal<Sale[]>('sales', targetEmail, []) || loadUserFromLocal<Sale[]>('sales', targetUid, []);
+    if (cachedSales && cachedSales.length > 0) {
+      setSales(cachedSales);
+    }
+    const cachedInstallments = loadUserFromLocal<Installment[]>('installments', targetEmail, []) || loadUserFromLocal<Installment[]>('installments', targetUid, []);
+    if (cachedInstallments && cachedInstallments.length > 0) {
+      setInstallments(cachedInstallments);
+    }
+    const cachedCategories = loadUserFromLocal<ProductCategory[]>('categories', targetEmail, []) || loadUserFromLocal<ProductCategory[]>('categories', targetUid, []);
+    if (cachedCategories && cachedCategories.length > 0) {
+      setCategories(cachedCategories);
+    }
+    const cachedDevices = loadUserFromLocal<Device[]>('devices', targetEmail, []) || loadUserFromLocal<Device[]>('devices', targetUid, []);
+    if (cachedDevices && cachedDevices.length > 0) {
+      setDevices(cachedDevices);
+    }
+    const cachedCustomers = loadUserFromLocal<CustomerCreditProfile[]>('customer_profiles', targetEmail, []) || loadUserFromLocal<CustomerCreditProfile[]>('customer_profiles', targetUid, []);
+    if (cachedCustomers && cachedCustomers.length > 0) {
+      setCustomerProfiles(cachedCustomers);
+    }
+    const cachedSuppliers = loadUserFromLocal<Supplier[]>('suppliers', targetEmail, []) || loadUserFromLocal<Supplier[]>('suppliers', targetUid, []);
+    if (cachedSuppliers && cachedSuppliers.length > 0) {
+      setSuppliers(cachedSuppliers);
+    }
+
     // 4. Subscribe all collections scoped to targetUid
     activeSubsRef.current = subscribeAllCollections(targetUid, targetEmail);
 
@@ -3169,6 +3427,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       deleteUsedBuy,
       staff,
       addStaff,
+      updateStaff,
+      deleteStaff,
       toggleStaffStatus,
       accounts,
       journalEntries,

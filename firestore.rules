@@ -27,12 +27,14 @@ service cloud.firestore {
       return isSignedIn() && (
         request.auth.uid == ownerId ||
         (request.auth.token.email != null && (
-          request.auth.token.email == 'srmobilezone000@gmail.com' ||
-          request.auth.token.email == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com'
+          request.auth.token.email.lower() == 'srmobilezone000@gmail.com' ||
+          request.auth.token.email.lower() == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com'
         ) && (
           ownerId == 'nzkkjimuewak3uwtcztzkbq7j1s2' ||
           ownerId == 'srmobilezone000@gmail.com' ||
           ownerId == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' ||
+          ownerId == 'srmobilezone' ||
+          ownerId == 'tenant-nzkkjimuewak3uwtcztzkbq7j1s2' ||
           ownerId == request.auth.uid
         ))
       );
@@ -40,7 +42,7 @@ service cloud.firestore {
 
     function isPlatformSuperAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == 'maraju921@gmail.com' ||
+        (request.auth.token.email != null && request.auth.token.email.lower() == 'maraju921@gmail.com') ||
         request.auth.uid == 'admin_maraju921_gmail_com'
       );
     }
@@ -179,13 +181,13 @@ service cloud.firestore {
       allow get: if isSignedIn() && (
         isOwner(existing().ownerId) || 
         isPlatformSuperAdmin() ||
-        ((request.auth.token.email == 'srmobilezone000@gmail.com' || request.auth.token.email == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com') && settingId == 'nzkkjimuewak3uwtcztzkbq7j1s2')
+        ((request.auth.token.email != null && (request.auth.token.email.lower() == 'srmobilezone000@gmail.com' || request.auth.token.email.lower() == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com')) && (settingId == 'nzkkjimuewak3uwtcztzkbq7j1s2' || settingId == 'srmobilezone000@gmail.com' || settingId == 'srmobilezone'))
       );
       allow list: if isSignedIn() && (isOwner(resource.data.ownerId) || isPlatformSuperAdmin());
       allow create: if isSignedIn() && isValidId(settingId) && isValidStoreSettings(incoming()) &&
-                       (isOwner(incoming().ownerId) || isPlatformSuperAdmin() || ((request.auth.token.email == 'srmobilezone000@gmail.com' || request.auth.token.email == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com') && settingId == 'nzkkjimuewak3uwtcztzkbq7j1s2'));
+                       (isOwner(incoming().ownerId) || isPlatformSuperAdmin() || ((request.auth.token.email != null && (request.auth.token.email.lower() == 'srmobilezone000@gmail.com' || request.auth.token.email.lower() == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com')) && (settingId == 'nzkkjimuewak3uwtcztzkbq7j1s2' || settingId == 'srmobilezone000@gmail.com' || settingId == 'srmobilezone')));
       allow update: if isSignedIn() && isValidId(settingId) && isValidStoreSettings(incoming()) &&
-                       (isOwner(incoming().ownerId) || isPlatformSuperAdmin() || ((request.auth.token.email == 'srmobilezone000@gmail.com' || request.auth.token.email == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com') && settingId == 'nzkkjimuewak3uwtcztzkbq7j1s2'));
+                       (isOwner(incoming().ownerId) || isPlatformSuperAdmin() || ((request.auth.token.email != null && (request.auth.token.email.lower() == 'srmobilezone000@gmail.com' || request.auth.token.email.lower() == 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com')) && (settingId == 'nzkkjimuewak3uwtcztzkbq7j1s2' || settingId == 'srmobilezone000@gmail.com' || settingId == 'srmobilezone')));
       allow delete: if isSignedIn() && isValidId(settingId) && (isOwner(existing().ownerId) || isPlatformSuperAdmin());
     }
 

@@ -102,14 +102,68 @@ export function getUserScopedKey(baseKey: string, userIdentifier: string | null 
 
 export function loadUserFromLocal<T>(baseKey: string, userIdentifier: string | null | undefined, fallback: T): T {
   if (!userIdentifier) return fallback;
+  const cleanId = (userIdentifier || '').toLowerCase().trim();
+  const isSR = cleanId === 'srmobilezone000@gmail.com' || 
+               cleanId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || 
+               cleanId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || 
+               cleanId === 'srmobilezone' ||
+               cleanId.includes('srmobilezone');
+
+  if (isSR) {
+    // Check all legacy and alias keys in descending priority order
+    const candidateKeys = [
+      `usr_srmobilezone000@gmail.com_${baseKey}`,
+      `usr_srmobilezone000_gmail_com_${baseKey}`,
+      `usr_nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com_${baseKey}`,
+      `usr_nzkkjimuewak3uwtcztzkbq7j1s2_phonesellpro_com_${baseKey}`,
+      `usr_nzkkjimuewak3uwtcztzkbq7j1s2_${baseKey}`,
+      `usr_tenant-nzkkjimuewak3uwtcztzkbq7j1s2_${baseKey}`,
+      `usr_srmobilezone_${baseKey}`,
+      `guest_${baseKey}`,
+      baseKey
+    ];
+
+    for (const key of candidateKeys) {
+      const val = loadFromLocal<any>(key, null);
+      if (val !== null && val !== undefined) {
+        if (Array.isArray(val) && val.length > 0) {
+          // Mirror to canonical keys so future reads are instantaneous
+          saveToLocal(`usr_srmobilezone000@gmail.com_${baseKey}`, val);
+          saveToLocal(`usr_nzkkjimuewak3uwtcztzkbq7j1s2_${baseKey}`, val);
+          return val as T;
+        } else if (!Array.isArray(val) && typeof val === 'object' && Object.keys(val).length > 0) {
+          saveToLocal(`usr_srmobilezone000@gmail.com_${baseKey}`, val);
+          saveToLocal(`usr_nzkkjimuewak3uwtcztzkbq7j1s2_${baseKey}`, val);
+          return val as T;
+        }
+      }
+    }
+    return fallback;
+  }
+
   const scopedKey = getUserScopedKey(baseKey, userIdentifier);
-  return loadFromLocal<T>(scopedKey, fallback);
+  const result = loadFromLocal<T>(scopedKey, fallback);
+  return result;
 }
 
 export function saveUserToLocal<T>(baseKey: string, userIdentifier: string | null | undefined, data: T): void {
   if (!userIdentifier) return;
-  const scopedKey = getUserScopedKey(baseKey, userIdentifier);
-  saveToLocal<T>(scopedKey, data);
+  const cleanId = (userIdentifier || '').toLowerCase().trim();
+  const isSR = cleanId === 'srmobilezone000@gmail.com' || 
+               cleanId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' || 
+               cleanId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || 
+               cleanId === 'srmobilezone' ||
+               cleanId.includes('srmobilezone');
+
+  if (isSR) {
+    saveToLocal(`usr_srmobilezone000@gmail.com_${baseKey}`, data);
+    saveToLocal(`usr_nzkkjimuewak3uwtcztzkbq7j1s2_${baseKey}`, data);
+    saveToLocal(`usr_nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com_${baseKey}`, data);
+    saveToLocal(`usr_srmobilezone000_gmail_com_${baseKey}`, data);
+  } else {
+    const scopedKey = getUserScopedKey(baseKey, userIdentifier);
+    saveToLocal<T>(scopedKey, data);
+  }
 }
 
 // --- Direct Firebase Firestore Database Operations ---
@@ -179,13 +233,21 @@ export function subscribeCollectionFromFirestore<T>(
   try {
     const isSR = ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || 
                  ownerId === 'srmobilezone000@gmail.com' ||
-                 ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com';
+                 ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' ||
+                 ownerId === 'srmobilezone' ||
+                 ownerId.includes('srmobilezone');
 
     const effectiveList = Array.from(new Set([
       ownerId,
       ...(ownerIdAliases || []),
-      ...(isSR ? ['nzkkjimuewak3uwtcztzkbq7j1s2', 'srmobilezone000@gmail.com', 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com'] : [])
-    ]));
+      ...(isSR ? [
+        'nzkkjimuewak3uwtcztzkbq7j1s2', 
+        'srmobilezone000@gmail.com', 
+        'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com',
+        'srmobilezone',
+        'tenant-nzkkjimuewak3uwtcztzkbq7j1s2'
+      ] : [])
+    ])).filter(Boolean);
 
     const q = effectiveList.length > 1
       ? query(collection(db, collectionName), where('ownerId', 'in', effectiveList))
@@ -198,17 +260,53 @@ export function subscribeCollectionFromFirestore<T>(
         const seenIds = new Set<string>();
         snapshot.forEach(docSnap => {
           const item = docSnap.data() as any;
-          if (item && item.id && !seenIds.has(item.id)) {
-            seenIds.add(item.id);
-            results.push(item as T);
-          } else if (item && !item.id) {
+          const docId = item?.id || docSnap.id;
+          if (item && docId && !seenIds.has(docId)) {
+            seenIds.add(docId);
+            results.push({ ...item, id: docId } as T);
+          } else if (item && !docId) {
             results.push(item as T);
           }
         });
-        onData(results);
+
+        if (results.length > 0) {
+          onData(results);
+        } else {
+          // If where-query returned 0 items, check whether Super Admin can fetch items without filter
+          const curEmail = auth.currentUser?.email || '';
+          if (curEmail.toLowerCase() === 'maraju921@gmail.com') {
+            getDocs(collection(db, collectionName)).then(allSnap => {
+              const matched: T[] = [];
+              const seen = new Set<string>();
+              allSnap.forEach(d => {
+                const item = d.data() as any;
+                if (!item) return;
+                const matchOwner = effectiveList.includes(item.ownerId) ||
+                  (isSR && (item.ownerId?.includes('srmobilezone') || item.ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || item.ownerId === 'srmobilezone000@gmail.com'));
+                if (matchOwner) {
+                  const id = item.id || d.id;
+                  if (!seen.has(id)) {
+                    seen.add(id);
+                    matched.push({ ...item, id } as T);
+                  }
+                }
+              });
+              if (matched.length > 0) {
+                onData(matched);
+              } else {
+                onData([]);
+              }
+            }).catch(() => {
+              onData([]);
+            });
+          } else {
+            onData([]);
+          }
+        }
       },
       (error) => {
-        console.warn(`Firestore real-time subscription error for ${collectionName}:`, error.message);
+        console.warn(`Firestore real-time subscription notice for ${collectionName}:`, error.message);
+        // Do not pass empty array on subscription error so existing cached state is retained
       }
     );
   } catch (error) {
@@ -226,10 +324,11 @@ export async function loadCollectionFromFirestore<T>(collectionName: string, own
   try {
     const isSR = ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || 
                  ownerId === 'srmobilezone000@gmail.com' ||
-                 ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com';
+                 ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' ||
+                 ownerId === 'srmobilezone';
 
     const effectiveList = isSR 
-      ? ['nzkkjimuewak3uwtcztzkbq7j1s2', 'srmobilezone000@gmail.com', 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com']
+      ? ['nzkkjimuewak3uwtcztzkbq7j1s2', 'srmobilezone000@gmail.com', 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com', 'srmobilezone']
       : [ownerId];
 
     const q = effectiveList.length > 1
@@ -250,7 +349,7 @@ export async function loadCollectionFromFirestore<T>(collectionName: string, own
     });
     return results;
   } catch (error) {
-    handleFirestoreError(error, OperationType.LIST, collectionName);
+    console.warn(`Firestore read notice for ${collectionName}:`, error);
     return [];
   }
 }
@@ -402,10 +501,49 @@ export async function fetchAllFirestoreTenants(): Promise<Array<{ id: string; se
       }
 
       // Filter products and sales for this ownerId (including legacy aliases)
-      const isSR = ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2';
-      const storeProducts = allProducts.filter(p => p && (p.ownerId === ownerId || (isSR && (p.ownerId === 'srmobilezone000@gmail.com' || p.ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com'))));
-      const storeSales = allSales.filter(s => s && (s.ownerId === ownerId || (isSR && (s.ownerId === 'srmobilezone000@gmail.com' || s.ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com'))));
+      const isSR = ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' || 
+                   ownerId === 'srmobilezone000@gmail.com' ||
+                   docSnap.id === 'nzkkjimuewak3uwtcztzkbq7j1s2' ||
+                   data.email === 'srmobilezone000@gmail.com' ||
+                   data.storeName === 'SR Mobile Zone';
+
+      const storeProducts = allProducts.filter(p => p && (
+        p.ownerId === ownerId || 
+        (isSR && (
+          p.ownerId === 'srmobilezone000@gmail.com' || 
+          p.ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' ||
+          p.ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' ||
+          p.ownerId === 'srmobilezone' ||
+          p.ownerId === 'tenant-nzkkjimuewak3uwtcztzkbq7j1s2'
+        ))
+      ));
+      const storeSales = allSales.filter(s => s && (
+        s.ownerId === ownerId || 
+        (isSR && (
+          s.ownerId === 'srmobilezone000@gmail.com' || 
+          s.ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2@phonesellpro.com' ||
+          s.ownerId === 'nzkkjimuewak3uwtcztzkbq7j1s2' ||
+          s.ownerId === 'srmobilezone' ||
+          s.ownerId === 'tenant-nzkkjimuewak3uwtcztzkbq7j1s2'
+        ))
+      ));
       const revenue = storeSales.reduce((sum, s) => sum + (s.total || s.totalAmount || 0), 0);
+
+      // Pre-cache discovered products and sales into user-scoped local storage so inspecting never shows 0
+      if (storeProducts.length > 0) {
+        saveUserToLocal('products', ownerId, storeProducts);
+        if (isSR) {
+          saveUserToLocal('products', 'srmobilezone000@gmail.com', storeProducts);
+          saveUserToLocal('products', 'nzkkjimuewak3uwtcztzkbq7j1s2', storeProducts);
+        }
+      }
+      if (storeSales.length > 0) {
+        saveUserToLocal('sales', ownerId, storeSales);
+        if (isSR) {
+          saveUserToLocal('sales', 'srmobilezone000@gmail.com', storeSales);
+          saveUserToLocal('sales', 'nzkkjimuewak3uwtcztzkbq7j1s2', storeSales);
+        }
+      }
 
       const existingIdx = list.findIndex(item => item.ownerId === ownerId);
       if (existingIdx >= 0) {

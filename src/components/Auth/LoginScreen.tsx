@@ -490,12 +490,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
               {/* Quick staff picker helper */}
               {staff && staff.length > 0 && (
-                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] space-y-1.5">
-                  <span className="font-bold text-slate-700 block">
-                    {lang === 'bn' ? 'সরাসরি টেস্ট করার জন্য কর্মী নির্বাচন করুন:' : 'Quick Select Staff Account:'}
-                  </span>
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-700 block">
+                      {lang === 'bn' ? 'ক্লিক করে সরাসরি টেস্ট করুন (Quick Test Accounts):' : 'Click to Auto-fill Staff Credentials:'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">PIN: 1234</span>
+                  </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {staff.slice(0, 3).map(s => (
+                    {staff.map(s => (
                       <button
                         key={s.id}
                         type="button"
@@ -503,9 +506,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                           setStaffInput(s.phone);
                           setStaffPin(s.pin || '1234');
                         }}
-                        className="px-2 py-1 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-lg text-slate-800 font-medium transition cursor-pointer text-[10px]"
+                        className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer text-[10px] border flex items-center gap-1 ${
+                          s.role === 'Admin'
+                            ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border-amber-300 font-bold shadow-xs'
+                            : 'bg-white hover:bg-indigo-50 border-slate-200 hover:border-indigo-300 text-slate-800'
+                        }`}
                       >
-                        {s.name} ({s.role})
+                        {s.role === 'Admin' ? '🛡️ ' : ''}{s.name} ({s.role === 'Admin' ? 'Admin - মালিক সমকক্ষ' : s.role})
                       </button>
                     ))}
                   </div>

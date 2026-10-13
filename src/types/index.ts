@@ -540,7 +540,7 @@ export interface StaffMember {
   branch: Branch;
   name: string;
   phone: string;
-  role: 'Manager' | 'Sales Executive' | 'Technician' | 'Accountant';
+  role: 'Admin' | 'Manager' | 'Sales Executive' | 'Technician' | 'Accountant';
   salary: number;
   salesCommissionPercent: number;
   pin?: string;
@@ -569,7 +569,7 @@ export interface JournalTransaction {
 }
 
 // --- Authentication & Security Models ---
-export type UserRole = 'SUPER_ADMIN' | 'BRANCH_MANAGER' | 'SALES_CASHIER' | 'TECH_OPERATOR';
+export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'BRANCH_MANAGER' | 'SALES_CASHIER' | 'TECH_OPERATOR';
 
 export interface AuthUser {
   id: string;
@@ -583,6 +583,8 @@ export interface AuthUser {
   avatar?: string;
   lastLogin?: string;
   isPlatformAdmin?: boolean;
+  storeOwnerId?: string;
+  staffRole?: StaffMember['role'];
 }
 
 // --- Multi-Tenant SaaS Platform Models ---

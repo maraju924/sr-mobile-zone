@@ -3,7 +3,47 @@ import { Device, UsedBuyRecord, SMSLog, ChatMessage, StaffMember, AccountEntry, 
 // Zero Mock/Demo Data - 100% Pure Firebase
 export const INITIAL_DEVICES: Device[] = [];
 export const INITIAL_USED_BUYS: UsedBuyRecord[] = [];
-export const INITIAL_STAFF: StaffMember[] = [];
+export const INITIAL_STAFF: StaffMember[] = [
+  {
+    id: 'STF-ADMIN-01',
+    ownerId: 'nzkkjimuewak3uwtcztzkbq7j1s2',
+    name: 'এডমিন কর্মকর্তা (Admin)',
+    phone: '01700000001',
+    role: 'Admin',
+    salary: 35000,
+    salesCommissionPercent: 2.0,
+    pin: '1234',
+    branch: 'BP-ISHWARGONJ',
+    active: true,
+    joinedDate: '2025-01-01'
+  },
+  {
+    id: 'STF-SALES-02',
+    ownerId: 'nzkkjimuewak3uwtcztzkbq7j1s2',
+    name: 'সাকিব আহমেদ (Sales)',
+    phone: '01700000002',
+    role: 'Sales Executive',
+    salary: 18000,
+    salesCommissionPercent: 1.5,
+    pin: '1234',
+    branch: 'BP-ISHWARGONJ',
+    active: true,
+    joinedDate: '2025-02-15'
+  },
+  {
+    id: 'STF-MGR-03',
+    ownerId: 'nzkkjimuewak3uwtcztzkbq7j1s2',
+    name: 'তানভীর হাসান (Manager)',
+    phone: '01700000003',
+    role: 'Manager',
+    salary: 25000,
+    salesCommissionPercent: 1.0,
+    pin: '1234',
+    branch: 'BP-MYMENSINGH',
+    active: true,
+    joinedDate: '2025-01-10'
+  }
+];
 export const INITIAL_ACCOUNTS: AccountEntry[] = [];
 export const INITIAL_JOURNAL: JournalTransaction[] = [];
 export const INITIAL_SMS_LOGS: SMSLog[] = [];

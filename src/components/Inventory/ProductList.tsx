@@ -119,10 +119,10 @@ export const ProductList: React.FC = () => {
 
       const q = searchQuery.toLowerCase().trim();
       const matchQuery = !q || 
-        p.name.toLowerCase().includes(q) || 
-        p.brand.toLowerCase().includes(q) || 
-        p.barcode.toLowerCase().includes(q) ||
-        (p.serialNumbers || []).some(s => s.toLowerCase().includes(q));
+        (p.name && p.name.toLowerCase().includes(q)) || 
+        (p.brand && p.brand.toLowerCase().includes(q)) || 
+        (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+        (Array.isArray(p.serialNumbers) && p.serialNumbers.some(s => s && s.toLowerCase().includes(q)));
 
       return matchCat && matchStock && matchQuery;
     });

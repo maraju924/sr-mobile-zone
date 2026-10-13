@@ -359,7 +359,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                 {currentUser?.name || 'Tenant Admin'}
               </div>
               <div className="text-[10px] text-indigo-400 font-mono">
-                {currentUser?.role === 'SUPER_ADMIN' ? 'Owner / Admin' : currentUser?.role || 'Staff'}
+                {currentUser?.staffRole === 'Admin' 
+                  ? 'Admin (মালিক সমকক্ষ)' 
+                  : (currentUser?.role === 'SUPER_ADMIN' ? 'Owner / Admin' : currentUser?.staffRole || currentUser?.role || 'Staff')}
               </div>
             </div>
           </div>
@@ -381,7 +383,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar }) => {
                       আইসোলেটেড
                     </span>
                     <span className="px-1.5 py-0.5 rounded text-[8px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      {currentUser?.role || 'SUPER_ADMIN'}
+                      {currentUser?.staffRole === 'Admin' ? 'ADMIN (FULL OWNER)' : (currentUser?.role || 'SUPER_ADMIN')}
                     </span>
                   </div>
                 </div>
